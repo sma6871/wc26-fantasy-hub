@@ -279,9 +279,9 @@ function FixtureDots({squadId, fixtures, sq, max=3}){
 }
 
 /* ---------------- player row ---------------- */
-function PlayerRow({p, sq, onAdd, inTeam, onOpen, points, fixtures}) {
+function PlayerRow({p, sq, onAdd, inTeam, onOpen, points, fixtures, lockReason}) {
   return (
-    <div className="prow" onClick={()=>onOpen&&onOpen(p)}>
+    <div className="prow" style={lockReason?{opacity:.5}:null} onClick={()=> lockReason ? null : (onOpen&&onOpen(p))}>
       <div style={{width:34,textAlign:"center",fontSize:20}}>{FLAGS[sq[p.squadId].abbr]||"⚽"}</div>
       <div style={{flex:1,minWidth:0}}>
         <div className="pname">{fullName(p)} <SpBadges sp={p.sp}/></div>
@@ -299,6 +299,7 @@ function PlayerRow({p, sq, onAdd, inTeam, onOpen, points, fixtures}) {
       <div style={{textAlign:"right"}}>
         <div className="bigpt num" style={{color:"var(--pitch)"}}>{points!=null? points : p.proj}</div>
         <div style={{fontSize:9.5,color:"var(--dim)",letterSpacing:".06em"}}>{points!=null?"PTS":"PROJ GS"}</div>
+        {lockReason && <div style={{fontSize:9,color:"var(--red)",fontWeight:700,marginTop:3}}>{lockReason}</div>}
         {onAdd && <button className={"btn "+(inTeam?"r":"ghost")} style={{padding:"5px 10px",marginTop:5,fontSize:12}}
           onClick={e=>{e.stopPropagation();onAdd(p);}}>{inTeam?"Remove":"+ Add"}</button>}
       </div>
@@ -316,7 +317,7 @@ function App() {
   const [cap,setCap]=useState(null);
   const [vc,setVc]=useState(null);
   const [detail,setDetail]=useState(null);       // player detail sheet
-  const [transfer,setTransfer]=useState(null);   // player being transferred out
+  const [picker,setPicker]=useState(null);       // {out, position} for the in-place selection sheet
   const [chat,setChat]=useState([GREETING]);
 
   // chat persistence
@@ -408,8 +409,8 @@ function App() {
         : <TeamsGrid sq={sq} setTeam={setTeam} players={players}/>)}
       {tab==="players" && <PlayersView players={players} sq={sq} toggle={toggle} myIds={myIds} openP={setDetail} fixtures={fixtures}/>}
       {tab==="myteam" && <MyTeam squad={mySquad} sq={sq} toggle={toggle} cap={cap} vc={vc} fixtures={fixtures}
-        setCapVc={(c,v)=>{setCap(c);setVc(v);persist(myIds,c,v);}} goPlayers={()=>setTab("players")}
-        onTransfer={setTransfer}/>}
+        setCapVc={(c,v)=>{setCap(c);setVc(v);persist(myIds,c,v);}}
+        onPick={(out,position)=>setPicker({out, position: position || (out&&out.position)})}/>}
       {tab==="coach" && (COACH_MODE==="off"
         ? <CoachWaitlist/>
         : <Coach players={players} sq={sq} mySquad={mySquad} cap={cap}
@@ -418,10 +419,10 @@ function App() {
       {tab==="rules" && <Rules/>}
 
       {detail && <Detail p={detail} sq={sq} fixtures={fixtures} close={()=>setDetail(null)} toggle={toggle} inTeam={myIds.includes(detail.id)}/>}
-      {transfer && <TransferSheet out={transfer} mySquad={mySquad} players={players} sq={sq} fixtures={fixtures}
-        close={()=>setTransfer(null)}
-        onSwap={(o,i)=>{ swap(o,i); setTransfer(null); }}
-        onRemove={(o)=>{ toggle(o); setTransfer(null); }}/>}
+      {picker && <SelectSheet slot={picker} mySquad={mySquad} players={players} sq={sq} fixtures={fixtures}
+        close={()=>setPicker(null)}
+        onPick={(cand)=>{ picker.out ? swap(picker.out,cand) : toggle(cand); setPicker(null); }}
+        onRemove={()=>{ if(picker.out) toggle(picker.out); setPicker(null); }}/>}
 
       <nav className="tabs">
         {[["teams","🏟️","Teams"],["players","🔎","Players"],["myteam","📋","My Team"],["coach","🧠","AI Coach"],["rules","📖","Rules"]].map(([k,ic,l])=>
@@ -632,47 +633,51 @@ function Pitch({squad, sq, cap, vc, fixtures, onToken, onEmpty}){
   </div>;
 }
 
-/* ---------------- transfers ---------------- */
-function TransferSheet({out, mySquad, players, sq, fixtures, close, onSwap, onRemove}){
-  const baseCost = mySquad.reduce((s,p)=>s+p.price,0) - out.price; // squad cost without the outgoing player
-  const maxPrice = Math.round((100.001-baseCost)*10)/10;           // most a replacement can cost
-  const list = useMemo(()=> players.filter(c=>
-      c.position===out.position &&                                          // same position keeps the quota valid
-      !mySquad.some(p=>p.id===c.id) &&                                      // not already in the squad
-      (baseCost + c.price) <= 100.001 &&                                    // affordable within $100m
-      mySquad.filter(p=>p.squadId===c.squadId && p.id!==out.id).length < 3  // respects 3-per-nation
-    ).sort((a,b)=> b.proj-a.proj)
-  ,[out,players,mySquad,baseCost]);
-  const t = sq[out.squadId];
+/* ---------------- in-place selection sheet (add / replace / remove) ---------------- */
+function SelectSheet({slot, mySquad, players, sq, fixtures, close, onPick, onRemove}){
+  const {out, position} = slot;
+  const [f,setF]=useState({q:"",pos:position,grp:"ALL",maxP:11,sort:"proj"});
+  const squadCost = mySquad.reduce((s,p)=>s+p.price,0);
+  const baseCost = squadCost - (out? out.price : 0);          // squad cost with the slot vacated
+  const budgetLeft = Math.round((100.001-baseCost)*10)/10;    // most a pick can cost
+  const nationCount = sid => mySquad.filter(p=>p.squadId===sid && (!out || p.id!==out.id)).length;
+  const list = useMemo(()=>{
+    const base = players.filter(c=> !mySquad.some(p=>p.id===c.id));   // not already picked
+    return applyPlayerFilters(base, sq, {...f, pos:position});        // position locked + user sort/filter
+  },[players,mySquad,sq,f,position]);
+  const t = out? sq[out.squadId] : null;
   return <div style={{position:"fixed",inset:0,zIndex:60,background:"rgba(5,8,12,.72)"}} onClick={close}>
-    <div className="card" style={{position:"absolute",left:0,right:0,bottom:0,margin:0,borderRadius:"18px 18px 0 0",maxHeight:"86vh",overflow:"auto",padding:16}} onClick={e=>e.stopPropagation()}>
+    <div className="card" style={{position:"absolute",left:0,right:0,bottom:0,margin:0,borderRadius:"18px 18px 0 0",maxHeight:"88vh",overflow:"auto",padding:16}} onClick={e=>e.stopPropagation()}>
       <div className="row" style={{justifyContent:"space-between"}}>
-        <div className="gl">TRANSFER OUT</div>
+        <div className="gl">{out? "REPLACE "+position : "ADD "+position} · ${budgetLeft.toFixed(1)}m free</div>
         <button className="btn ghost" style={{padding:"4px 10px"}} onClick={close}>✕</button>
       </div>
-      <div className="row" style={{marginTop:8}}>
-        <span style={{fontSize:24}}>{FLAGS[t.abbr]||"⚽"}</span>
+      {out && <div className="row" style={{marginTop:8,background:"var(--panel2)",borderRadius:10,padding:"7px 9px"}}>
+        <span style={{fontSize:20}}>{FLAGS[t.abbr]||"⚽"}</span>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:700,fontSize:15}}>{fullName(out)}</div>
+          <div style={{fontWeight:700,fontSize:14}}>Out: {fullName(out)}</div>
           <div className="pmeta num">{out.position} · {t.abbr} · ${out.price}m · proj {out.proj}</div>
         </div>
-        <button className="btn r" style={{fontSize:12,padding:"7px 11px"}} onClick={()=>onRemove(out)}>Remove</button>
+        <button className="btn r" style={{fontSize:12,padding:"7px 11px"}} onClick={onRemove}>Remove</button>
+      </div>}
+      <div className="sticky2" style={{top:0,marginTop:8}}>
+        <PlayerFilters f={f} setF={setF} lockPos={true} showGroup={false}/>
       </div>
-      <div className="pmeta" style={{margin:"11px 2px 2px"}}>
-        Replacements · {out.position} · ≤ <b className="num">${maxPrice.toFixed(1)}m</b> · within 3-per-nation. Tap one to swap in.
+      <div className="card" style={{padding:0,margin:"6px 0 0"}}>
+        {list.slice(0,60).map(c=>{
+          const reason = (baseCost+c.price) > 100.001 ? "Over budget" : nationCount(c.squadId) >= 3 ? "Nation cap" : null;
+          return <PlayerRow key={c.id} p={c} sq={sq} fixtures={fixtures}
+            onOpen={reason? null : (cand=>onPick(cand))} lockReason={reason}/>;
+        })}
+        {list.length===0 && <div className="pmeta" style={{padding:12}}>No {position} match your filters. Clear the search or price filter.</div>}
+        {list.length>60 && <div className="pmeta" style={{padding:"8px 12px"}}>+{list.length-60} more — refine with the sort or filters above.</div>}
       </div>
-      {list.length===0
-        ? <div className="note" style={{marginTop:8}}>No affordable {out.position} fits your budget and nation limits right now. Remove a different player to free up room.</div>
-        : <div className="card" style={{padding:0,margin:"6px 0 0"}}>
-            {list.slice(0,50).map(c=><PlayerRow key={c.id} p={c} sq={sq} onOpen={cand=>onSwap(out,cand)} fixtures={fixtures}/>)}
-            {list.length>50 && <div className="pmeta" style={{padding:"8px 12px"}}>+{list.length-50} more — narrow by freeing up budget.</div>}
-          </div>}
     </div>
   </div>;
 }
 
 /* ---------------- my team ---------------- */
-function MyTeam({squad, sq, toggle, cap, vc, setCapVc, goPlayers, onTransfer, fixtures}) {
+function MyTeam({squad, sq, toggle, cap, vc, setCapVc, onPick, fixtures}) {
   const [view,setView]=useState("pitch");
   const cost = squad.reduce((s,p)=>s+p.price,0);
   const proj = squad.reduce((s,p)=>s+p.proj*(p.id===cap?2:1),0);
@@ -697,17 +702,17 @@ function MyTeam({squad, sq, toggle, cap, vc, setCapVc, goPlayers, onTransfer, fi
       {[["pitch","⚽ Pitch"],["list","≣ List"]].map(([k,l])=>
         <button key={k} className={"chip"+(view===k?" on":"")} onClick={()=>setView(k)}>{l}</button>)}
     </div>
-    {view==="pitch" && <Pitch squad={squad} sq={sq} cap={cap} vc={vc} fixtures={fixtures} onToken={onTransfer} onEmpty={goPlayers}/>}
+    {view==="pitch" && <Pitch squad={squad} sq={sq} cap={cap} vc={vc} fixtures={fixtures} onToken={onPick} onEmpty={pos=>onPick(null,pos)}/>}
     {view==="list" && ["GK","DEF","MID","FWD"].map(pos=>(
       <div key={pos} className="card">
         <div className="gl" style={{marginBottom:7}}>{pos} · {byPos[pos].length}/{QUOTA[pos]}</div>
         {byPos[pos].map(p=>(
           <div key={p.id} className="slot full">
-            <div className="row" style={{flex:1,minWidth:0,gap:8,cursor:"pointer"}} onClick={()=>onTransfer(p)}>
+            <div className="row" style={{flex:1,minWidth:0,gap:8,cursor:"pointer"}} onClick={()=>onPick(p,p.position)}>
               <span style={{fontSize:17}}>{FLAGS[sq[p.squadId].abbr]}</span>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:13.5,fontWeight:600}}>{fullName(p)} {p.id===cap&&<span className="cap">C</span>} {p.id===vc&&<span className="vc">VC</span>}</div>
-                <div className="pmeta num">${p.price}m · proj {p.proj} · {(p.start*100)|0}% XI · ⇄ tap to transfer</div>
+                <div className="pmeta num">${p.price}m · proj {p.proj} · {(p.start*100)|0}% XI · ⇄ tap to change</div>
               </div>
             </div>
             <button className="chip" onClick={()=>setCapVc(p.id, vc===p.id?null:vc)}>C</button>
@@ -715,7 +720,7 @@ function MyTeam({squad, sq, toggle, cap, vc, setCapVc, goPlayers, onTransfer, fi
             <button className="btn r" style={{padding:"5px 9px",fontSize:12}} onClick={()=>toggle(p)}>✕</button>
           </div>))}
         {Array.from({length:QUOTA[pos]-byPos[pos].length}).map((_,i)=>
-          <div key={i} className="slot" onClick={goPlayers} style={{cursor:"pointer",color:"var(--dim)",fontSize:13}}>+ Add a {pos}</div>)}
+          <div key={i} className="slot" onClick={()=>onPick(null,pos)} style={{cursor:"pointer",color:"var(--dim)",fontSize:13}}>+ Add a {pos}</div>)}
       </div>))}
   </>;
 }
