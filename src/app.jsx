@@ -277,9 +277,17 @@ function FixtureDots({squadId, fixtures, sq, max=3}){
     {fx.map((f,i)=><span key={i} className="fixdot" title={sq[f.opp]?.name} style={{background:fixColor(f.diff)}}/>)}
   </span>;
 }
+// earliest upcoming fixture for a team, formatted like "Jun 12" (null when none scheduled)
+function nextFixtureDate(squadId, fixtures){
+  const fx = fixtures?.[squadId]||[];
+  if(!fx.length) return null;
+  const next = fx.reduce((a,b)=> new Date(b.date) < new Date(a.date) ? b : a);
+  return new Date(next.date).toLocaleDateString(undefined,{month:"short",day:"numeric"});
+}
 
 /* ---------------- player row ---------------- */
 function PlayerRow({p, sq, onAdd, inTeam, onOpen, points, fixtures, lockReason}) {
+  const nd = nextFixtureDate(p.squadId, fixtures);
   return (
     <div className="prow" style={lockReason?{opacity:.5}:null} onClick={()=> lockReason ? null : (onOpen&&onOpen(p))}>
       <div style={{width:34,textAlign:"center",fontSize:20}}>{FLAGS[sq[p.squadId].abbr]||"⚽"}</div>
@@ -288,6 +296,7 @@ function PlayerRow({p, sq, onAdd, inTeam, onOpen, points, fixtures, lockReason})
         <div className="pmeta num" style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <span>{p.position} · {sq[p.squadId].abbr} · ${p.price}m · {p.percentSelected}% owned</span>
           <FixtureDots squadId={p.squadId} fixtures={fixtures} sq={sq}/>
+          {nd && <span style={{color:"var(--pitch)",fontWeight:700}}>{nd}</span>}
         </div>
         <div className="row" style={{marginTop:5,gap:6}}>
           <NailedMeter v={p.start}/>
@@ -571,6 +580,7 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
       </div>
       <div className="row" style={{marginTop:10,gap:8,alignItems:"center"}}>
         <span className="gl">NEXT</span>
+        {nextFixtureDate(p.squadId,fixtures) && <b className="num" style={{color:"var(--pitch)"}}>{nextFixtureDate(p.squadId,fixtures)}</b>}
         <FixtureDots squadId={p.squadId} fixtures={fixtures} sq={sq}/>
         <span className="pmeta">fixture difficulty (Elo)</span>
       </div>
@@ -602,6 +612,7 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
 /* ---------------- pitch view ---------------- */
 function PitchToken({p, sq, cap, vc, onClick, fixtures}){
   const badge = p.id===cap? "cap" : p.id===vc? "vc" : null;
+  const nd = nextFixtureDate(p.squadId, fixtures);
   return <div className="ptok" onClick={onClick}>
     <span className="ptok-x" aria-hidden="true">⇄</span>
     {badge && <span className={"ptok-cv "+badge}>{badge==="cap"?"C":"V"}</span>}
@@ -609,6 +620,7 @@ function PitchToken({p, sq, cap, vc, onClick, fixtures}){
     <div className="ptok-card">
       <div className="pn">{pName(p)}</div>
       <div className="pp">${p.price}</div>
+      {nd && <div className="png">{nd}</div>}
       <FixtureDots squadId={p.squadId} fixtures={fixtures} sq={sq}/>
     </div>
   </div>;
