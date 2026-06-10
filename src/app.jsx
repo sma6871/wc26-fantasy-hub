@@ -29,6 +29,8 @@ const PROG_LABEL = {TITLE:"Title contender",SF:"Semi-final calibre",QF:"Quarter-
 const PROG_MULT = {TITLE:2.05,SF:1.8,QF:1.55,R16:1.32,R32:1.12};
 const POS_ORDER = {GK:0,DEF:1,MID:2,FWD:3};
 const QUOTA = {GK:2,DEF:5,MID:5,FWD:3};
+const BUDGET = 100.001;   // $100m squad cap (0.001 tolerance for float sums)
+const NATION_MAX = 3;     // max players per nation through the group stage and R32
 
 const NOTABLE_ABSENCES = "Not in final squads (injury or selection): Foden, Palmer (England) · Rodrygo, Estêvão, Militão (Brazil) · Neymar in squad but calf doubt for MD1 · Kudus, Salisu (Ghana) · Gilmour (Scotland) · Kulusevski (Sweden) · de Ligt, Timber, Xavi Simons, Frimpong (Netherlands) · ter Stegen not picked, Neuer recalled (Germany) · Ekitike (France) · Azmoun (Iran) · Gnabry (Germany) · Openda (Belgium) · Malagón (Mexico) · Davies major doubt (Canada) · Güler major doubt MD1 (Türkiye) · Saka Achilles watch (England).";
 
@@ -277,12 +279,13 @@ function FixtureDots({squadId, fixtures, sq, max=3}){
     {fx.map((f,i)=><span key={i} className="fixdot" title={sq[f.opp]?.name} style={{background:fixColor(f.diff)}}/>)}
   </span>;
 }
+function fmtDate(d){ return new Date(d).toLocaleDateString(undefined,{month:"short",day:"numeric"}); }
 // earliest upcoming fixture for a team, formatted like "Jun 12" (null when none scheduled)
 function nextFixtureDate(squadId, fixtures){
   const fx = fixtures?.[squadId]||[];
   if(!fx.length) return null;
   const next = fx.reduce((a,b)=> new Date(b.date) < new Date(a.date) ? b : a);
-  return new Date(next.date).toLocaleDateString(undefined,{month:"short",day:"numeric"});
+  return fmtDate(next.date);
 }
 
 /* ---------------- player row ---------------- */
@@ -375,9 +378,9 @@ function App() {
       if(ids.length>=15) return alert("Squad is full (15). Remove someone first.");
       const squad = ids.map(i=>data.players.find(x=>x.id===i));
       if(squad.filter(x=>x.position===p.position).length>=QUOTA[p.position]) return alert(`Position full: max ${QUOTA[p.position]} ${p.position}.`);
-      if(squad.filter(x=>x.squadId===p.squadId).length>=3) return alert("Max 3 players per nation in the group stage.");
+      if(squad.filter(x=>x.squadId===p.squadId).length>=NATION_MAX) return alert("Max 3 players per nation in the group stage.");
       const cost = squad.reduce((s,x)=>s+x.price,0)+p.price;
-      if(cost>100.001) return alert(`Over budget: that takes you to $${cost.toFixed(1)}m / $100m.`);
+      if(cost>BUDGET) return alert(`Over budget: that takes you to $${cost.toFixed(1)}m / $100m.`);
       ids.push(p.id);
     }
     let c=cap,v=vc;
@@ -476,7 +479,7 @@ function FixtureStrip({t, sq, fixtures}) {
         <span className="fixdot" style={{background:col}}/>
         <span style={{fontSize:16}}>{FLAGS[sq[f.opp].abbr]}</span>
         <span style={{flex:1,fontSize:14,fontWeight:600}}>{sq[f.opp].name}</span>
-        <span className="pmeta num">{new Date(f.date).toLocaleDateString(undefined,{month:"short",day:"numeric"})} · {f.venue}</span>
+        <span className="pmeta num">{fmtDate(f.date)} · {f.venue}</span>
       </div>;})}
     <div className="pmeta" style={{marginTop:7}}>● green = favourable matchup (Elo-based)</div>
   </div>;
@@ -562,7 +565,7 @@ function PlayersView({players, sq, toggle, myIds, openP, fixtures}) {
 
 /* ---------------- player detail ---------------- */
 function Detail({p, sq, fixtures, close, toggle, inTeam}) {
-  const t=sq[p.squadId]; const fx=fixtures[t.id]||[];
+  const t=sq[p.squadId]; const fx=fixtures[t.id]||[]; const nd=nextFixtureDate(p.squadId,fixtures);
   return <div style={{position:"fixed",inset:0,zIndex:60,background:"rgba(5,8,12,.72)"}} onClick={close}>
     <div className="card" style={{position:"absolute",left:0,right:0,bottom:0,margin:0,borderRadius:"18px 18px 0 0",maxHeight:"82vh",overflow:"auto",padding:"16px"}} onClick={e=>e.stopPropagation()}>
       <div className="row">
@@ -580,7 +583,7 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
       </div>
       <div className="row" style={{marginTop:10,gap:8,alignItems:"center"}}>
         <span className="gl">NEXT</span>
-        {nextFixtureDate(p.squadId,fixtures) && <b className="num" style={{color:"var(--pitch)"}}>{nextFixtureDate(p.squadId,fixtures)}</b>}
+        {nd && <b className="num" style={{color:"var(--pitch)"}}>{nd}</b>}
         <FixtureDots squadId={p.squadId} fixtures={fixtures} sq={sq}/>
         <span className="pmeta">fixture difficulty (Elo)</span>
       </div>
@@ -601,7 +604,7 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
         {fx.map((f,i)=><div key={i} className="row" style={{padding:"5px 0"}}>
           <span className="fixdot" style={{background:fixColor(f.diff)}}/>
           <span style={{fontSize:14,flex:1}}>{FLAGS[sq[f.opp].abbr]} {sq[f.opp].name}</span>
-          <span className="pmeta num">{new Date(f.date).toLocaleDateString(undefined,{month:"short",day:"numeric"})}</span></div>)}
+          <span className="pmeta num">{fmtDate(f.date)}</span></div>)}
       </div>
       <button className={"btn "+(inTeam?"r":"g")} style={{width:"100%",marginTop:14}} onClick={()=>{toggle(p);close();}}>
         {inTeam?"Remove from my team":"Add to my team"}</button>
@@ -648,10 +651,9 @@ function Pitch({squad, sq, cap, vc, fixtures, onToken, onEmpty}){
 /* ---------------- in-place selection sheet (add / replace / remove) ---------------- */
 function SelectSheet({slot, mySquad, players, sq, fixtures, close, onPick, onRemove}){
   const {out, position} = slot;
-  const [f,setF]=useState({q:"",pos:position,grp:"ALL",maxP:11,sort:"proj"});
-  const squadCost = mySquad.reduce((s,p)=>s+p.price,0);
-  const baseCost = squadCost - (out? out.price : 0);          // squad cost with the slot vacated
-  const budgetLeft = Math.round((100.001-baseCost)*10)/10;    // most a pick can cost
+  const [f,setF]=useState({q:"",grp:"ALL",maxP:11,sort:"proj"});
+  const baseCost = mySquad.reduce((s,p)=>s+p.price,0) - (out? out.price : 0);  // squad cost with the slot vacated
+  const budgetLeft = Math.round((BUDGET-baseCost)*10)/10;                      // most a pick can cost
   const nationCount = sid => mySquad.filter(p=>p.squadId===sid && (!out || p.id!==out.id)).length;
   const list = useMemo(()=>{
     const base = players.filter(c=> !mySquad.some(p=>p.id===c.id));   // not already picked
@@ -677,7 +679,7 @@ function SelectSheet({slot, mySquad, players, sq, fixtures, close, onPick, onRem
       </div>
       <div className="card" style={{padding:0,margin:"6px 0 0"}}>
         {list.slice(0,60).map(c=>{
-          const reason = (baseCost+c.price) > 100.001 ? "Over budget" : nationCount(c.squadId) >= 3 ? "Nation cap" : null;
+          const reason = (baseCost+c.price) > BUDGET ? "Over budget" : nationCount(c.squadId) >= NATION_MAX ? "Nation cap" : null;
           return <PlayerRow key={c.id} p={c} sq={sq} fixtures={fixtures}
             onOpen={reason? null : (cand=>onPick(cand))} lockReason={reason}/>;
         })}
@@ -767,8 +769,8 @@ function DraftCard({draft, players, sq, onApply}) {
   const errs = [];
   if(ps.length!==15) errs.push(`${ps.length}/15 valid players`);
   Object.entries(QUOTA).forEach(([pos,q])=>{ if(counts[pos]!==q) errs.push(`${counts[pos]}/${q} ${pos}`); });
-  if(cost>100.001) errs.push(`$${cost.toFixed(1)}m > $100m`);
-  Object.entries(nation).forEach(([sid,c])=>{ if(c>3) errs.push(`${c}× ${sq[sid]?.abbr} (max 3)`); });
+  if(cost>BUDGET) errs.push(`$${cost.toFixed(1)}m > $100m`);
+  Object.entries(nation).forEach(([sid,c])=>{ if(c>NATION_MAX) errs.push(`${c}× ${sq[sid]?.abbr} (max 3)`); });
   const capP = players.find(p=>p.id===draft.cap);
   const order = {GK:0,DEF:1,MID:2,FWD:3};
   return <div className="draftcard">
