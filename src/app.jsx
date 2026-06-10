@@ -220,6 +220,15 @@ table.sc td:first-child{text-align:left;color:var(--dim)}
 .conf{font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:6px;letter-spacing:.02em;white-space:nowrap;display:inline-block}
 .conf.exp{background:#e7f6ec;color:#15803d}
 .conf.mod{background:#ededea;color:#7c7f88}
+.viewtog{display:flex;gap:7px;padding:2px 12px 10px}
+.pitch{background:linear-gradient(180deg,#1f9d52 0%,#16a34a 58%,#15803d 100%);border-radius:16px;margin:0 12px 10px;padding:16px 6px;box-shadow:0 1px 2px rgba(20,20,15,.06)}
+.prow-p{display:flex;justify-content:center;gap:7px;flex-wrap:wrap;margin:9px 0}
+.ptok{position:relative;width:64px;background:#fff;border-radius:10px;padding:6px 3px 5px;text-align:center;box-shadow:0 1px 3px rgba(8,20,12,.28)}
+.ptok.empty{background:rgba(255,255,255,.14);border:1px dashed rgba(255,255,255,.7);color:#eafff1;cursor:pointer;box-shadow:none;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:54px}
+.ptok .pn{font-size:10.5px;font-weight:700;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;color:var(--ink)}
+.ptok.empty .pn{color:#eafff1;font-weight:600}
+.ptok .pp{font-size:9px;color:var(--dim);margin-top:1px}
+.ptok-cv{position:absolute;top:-7px;right:-7px;z-index:2;box-shadow:0 1px 2px rgba(0,0,0,.25)}
 `;
 
 function NailedMeter({v}) {
@@ -532,8 +541,32 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
   </div>;
 }
 
+/* ---------------- pitch view ---------------- */
+function PitchToken({p, sq, cap, vc, onClick}){
+  const badge = p.id===cap? "cap" : p.id===vc? "vc" : null;
+  return <div className="ptok" onClick={onClick} style={onClick?{cursor:"pointer"}:null}>
+    {badge && <span className={"ptok-cv "+badge}>{badge==="cap"?"C":"V"}</span>}
+    <div style={{fontSize:17,lineHeight:1}}>{FLAGS[sq[p.squadId].abbr]||"⚽"}</div>
+    <div className="pn">{pName(p)}</div>
+    <div className="pp num">${p.price} · <b style={{color:"var(--pitch)"}}>{p.proj}</b></div>
+  </div>;
+}
+function Pitch({squad, sq, cap, vc, onToken, onEmpty}){
+  const byPos={GK:[],DEF:[],MID:[],FWD:[]};
+  squad.forEach(p=>byPos[p.position].push(p));
+  return <div className="pitch">
+    {[["FWD",QUOTA.FWD],["MID",QUOTA.MID],["DEF",QUOTA.DEF],["GK",QUOTA.GK]].map(([pos,q])=>(
+      <div key={pos} className="prow-p">
+        {byPos[pos].map(p=><PitchToken key={p.id} p={p} sq={sq} cap={cap} vc={vc} onClick={onToken&&(()=>onToken(p))}/>)}
+        {Array.from({length:Math.max(0,q-byPos[pos].length)}).map((_,i)=>
+          <div key={"e"+i} className="ptok empty" onClick={onEmpty}><div style={{fontSize:16}}>+</div><div className="pn">{pos}</div></div>)}
+      </div>))}
+  </div>;
+}
+
 /* ---------------- my team ---------------- */
 function MyTeam({squad, sq, toggle, cap, vc, setCapVc, goPlayers}) {
+  const [view,setView]=useState("pitch");
   const cost = squad.reduce((s,p)=>s+p.price,0);
   const proj = squad.reduce((s,p)=>s+p.proj*(p.id===cap?2:1),0);
   const byPos = {GK:[],DEF:[],MID:[],FWD:[]};
@@ -553,7 +586,12 @@ function MyTeam({squad, sq, toggle, cap, vc, setCapVc, goPlayers}) {
       <div className="pmeta" style={{marginTop:6}}>{squad.length}/15 picked · captain doubles his points</div>
     </div>
     {warns.map((w,i)=><div key={i} className="card note" style={{fontSize:12.5}}>⚠ {w}</div>)}
-    {["GK","DEF","MID","FWD"].map(pos=>(
+    <div className="viewtog">
+      {[["pitch","⚽ Pitch"],["list","≣ List"]].map(([k,l])=>
+        <button key={k} className={"chip"+(view===k?" on":"")} onClick={()=>setView(k)}>{l}</button>)}
+    </div>
+    {view==="pitch" && <Pitch squad={squad} sq={sq} cap={cap} vc={vc} onEmpty={goPlayers}/>}
+    {view==="list" && ["GK","DEF","MID","FWD"].map(pos=>(
       <div key={pos} className="card">
         <div className="gl" style={{marginBottom:7}}>{pos} · {byPos[pos].length}/{QUOTA[pos]}</div>
         {byPos[pos].map(p=>(
