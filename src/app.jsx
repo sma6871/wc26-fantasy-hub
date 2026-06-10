@@ -498,46 +498,52 @@ function TeamPage({t, back, players, sq, fixtures, toggle, myIds, openP}) {
   </>;
 }
 
+/* ---------------- shared player filtering (Players tab + selection sheet) ---------------- */
+const SORT_OPTS=[["proj","Proj pts"],["deep","Deep-run pts"],["value","Value /$"],["start","Nailed"],["price","Price"],["sel","Owned %"]];
+const SORT_KEY={proj:p=>p.proj, value:p=>p.value, price:p=>p.price, sel:p=>p.percentSelected, start:p=>p.start, deep:p=>p.tourn};
+const PRICE_OPTS=[["≤4.5m",4.5],["≤5.5m",5.5],["≤6.5m",6.5],["≤8m",8],["Any price",11]];
+function applyPlayerFilters(players, sq, f){
+  let l=players;
+  if(f.pos && f.pos!=="ALL") l=l.filter(p=>p.position===f.pos);
+  if(f.grp && f.grp!=="ALL") l=l.filter(p=>sq[p.squadId].group===f.grp);
+  if(f.maxP<11) l=l.filter(p=>p.price<=f.maxP);
+  if(f.q){ const n=f.q.toLowerCase(); l=l.filter(p=> fullName(p).toLowerCase().includes(n) || sq[p.squadId].name.toLowerCase().includes(n)); }
+  const key=SORT_KEY[f.sort]||SORT_KEY.proj;
+  return [...l].sort((a,b)=>key(b)-key(a));
+}
+function PlayerFilters({f, setF, lockPos, showGroup=true}){
+  const set=patch=>setF(prev=>({...prev,...patch}));
+  return <>
+    <div className="searchbar">
+      <input placeholder="Search player or country…" value={f.q} onChange={e=>set({q:e.target.value})}/>
+      {showGroup && <select value={f.grp} onChange={e=>set({grp:e.target.value})}>
+        <option value="ALL">All groups</option>
+        {"abcdefghijkl".split("").map(g=><option key={g} value={g}>Group {g.toUpperCase()}</option>)}
+      </select>}
+    </div>
+    <div className="pillrow">
+      {!lockPos && ["ALL","GK","DEF","MID","FWD"].map(p=><button key={p} className={"chip"+(f.pos===p?" on":"")} onClick={()=>set({pos:p})}>{p}</button>)}
+      {!lockPos && <span style={{width:6}}/>}
+      {SORT_OPTS.map(([k,l])=><button key={k} className={"chip"+(f.sort===k?" on":"")} onClick={()=>set({sort:k})}>{l}</button>)}
+    </div>
+    <div className="pillrow" style={{paddingTop:0}}>
+      {PRICE_OPTS.map(([l,v])=><button key={l} className={"chip"+(f.maxP===v?" on":"")} onClick={()=>set({maxP:v})}>{l}</button>)}
+    </div>
+  </>;
+}
+
 /* ---------------- players browser ---------------- */
 function PlayersView({players, sq, toggle, myIds, openP, fixtures}) {
-  const [q,setQ]=useState("");
-  const [pos,setPos]=useState("ALL");
-  const [grp,setGrp]=useState("ALL");
-  const [maxP,setMaxP]=useState(11);
-  const [sort,setSort]=useState("proj");
+  const [f,setF]=useState({q:"",pos:"ALL",grp:"ALL",maxP:11,sort:"proj"});
   const [cnt,setCnt]=useState(60);
-  const list = useMemo(()=>{
-    let l=players;
-    if(pos!=="ALL") l=l.filter(p=>p.position===pos);
-    if(grp!=="ALL") l=l.filter(p=>sq[p.squadId].group===grp);
-    if(maxP<11) l=l.filter(p=>p.price<=maxP);
-    if(q){ const n=q.toLowerCase(); l=l.filter(p=> fullName(p).toLowerCase().includes(n) || sq[p.squadId].name.toLowerCase().includes(n)); }
-    const key={proj:p=>p.proj, value:p=>p.value, price:p=>p.price, sel:p=>p.percentSelected, start:p=>p.start, deep:p=>p.tourn}[sort];
-    return [...l].sort((a,b)=>key(b)-key(a));
-  },[players,q,pos,grp,maxP,sort]);
+  const list = useMemo(()=>applyPlayerFilters(players,sq,f),[players,sq,f]);
   return <>
     <div className="sticky2">
-      <div className="searchbar">
-        <input placeholder="Search player or country…" value={q} onChange={e=>setQ(e.target.value)}/>
-        <select value={grp} onChange={e=>setGrp(e.target.value)}>
-          <option value="ALL">All groups</option>
-          {"abcdefghijkl".split("").map(g=><option key={g} value={g}>Group {g.toUpperCase()}</option>)}
-        </select>
-      </div>
-      <div className="pillrow">
-        {["ALL","GK","DEF","MID","FWD"].map(p=><button key={p} className={"chip"+(pos===p?" on":"")} onClick={()=>setPos(p)}>{p}</button>)}
-        <span style={{width:6}}/>
-        {[["proj","Proj pts"],["deep","Deep-run pts"],["value","Value /$"],["start","Nailed"],["price","Price"],["sel","Owned %"]].map(([k,l])=>
-          <button key={k} className={"chip"+(sort===k?" on":"")} onClick={()=>setSort(k)}>{l}</button>)}
-      </div>
-      <div className="pillrow" style={{paddingTop:0}}>
-        {[["≤4.5m",4.5],["≤5.5m",5.5],["≤6.5m",6.5],["≤8m",8],["Any price",11]].map(([l,v])=>
-          <button key={l} className={"chip"+(maxP===v?" on":"")} onClick={()=>setMaxP(v)}>{l}</button>)}
-      </div>
+      <PlayerFilters f={f} setF={setF}/>
     </div>
     <div className="card" style={{padding:0}}>
       {list.slice(0,cnt).map(p=><PlayerRow key={p.id} p={p} sq={sq} onAdd={toggle} inTeam={myIds.includes(p.id)} onOpen={openP}
-        points={sort==="deep"?p.tourn:null} fixtures={fixtures}/>)}
+        points={f.sort==="deep"?p.tourn:null} fixtures={fixtures}/>)}
     </div>
     {cnt<list.length && <div style={{textAlign:"center",margin:"4px 0 14px"}}>
       <button className="btn ghost" onClick={()=>setCnt(c=>c+60)}>Show more ({list.length-cnt} left)</button></div>}
