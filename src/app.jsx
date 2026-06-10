@@ -286,6 +286,7 @@ function App() {
   const [cap,setCap]=useState(null);
   const [vc,setVc]=useState(null);
   const [detail,setDetail]=useState(null);       // player detail sheet
+  const [transfer,setTransfer]=useState(null);   // player being transferred out
   const [chat,setChat]=useState([GREETING]);
 
   // chat persistence
@@ -345,6 +346,16 @@ function App() {
     setMyIds(ids); setCap(c); setVc(v); persist(ids,c,v);
   };
 
+  // Swap one player out for another. The replacement list is pre-filtered for legality,
+  // so this just applies the move and drops captaincy if the captain/vice left.
+  const swap = (outP, inP)=>{
+    const ids = myIds.filter(i=>i!==outP.id);
+    ids.push(inP.id);
+    let c = cap===outP.id? null : cap;
+    let v = vc===outP.id? null : vc;
+    setMyIds(ids); setCap(c); setVc(v); persist(ids,c,v);
+  };
+
   if(err) return <div className="app"><style>{css}</style><div className="card" style={{marginTop:60}}>{err}</div></div>;
   if(!data) return <div className="app"><style>{css}</style>
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"70vh",gap:14}}>
@@ -367,7 +378,8 @@ function App() {
         : <TeamsGrid sq={sq} setTeam={setTeam} players={players}/>)}
       {tab==="players" && <PlayersView players={players} sq={sq} toggle={toggle} myIds={myIds} openP={setDetail}/>}
       {tab==="myteam" && <MyTeam squad={mySquad} sq={sq} toggle={toggle} cap={cap} vc={vc}
-        setCapVc={(c,v)=>{setCap(c);setVc(v);persist(myIds,c,v);}} goPlayers={()=>setTab("players")}/>}
+        setCapVc={(c,v)=>{setCap(c);setVc(v);persist(myIds,c,v);}} goPlayers={()=>setTab("players")}
+        onTransfer={setTransfer}/>}
       {tab==="coach" && (COACH_MODE==="off"
         ? <CoachWaitlist/>
         : <Coach players={players} sq={sq} mySquad={mySquad} cap={cap}
@@ -376,6 +388,10 @@ function App() {
       {tab==="rules" && <Rules/>}
 
       {detail && <Detail p={detail} sq={sq} fixtures={fixtures} close={()=>setDetail(null)} toggle={toggle} inTeam={myIds.includes(detail.id)}/>}
+      {transfer && <TransferSheet out={transfer} mySquad={mySquad} players={players} sq={sq}
+        close={()=>setTransfer(null)}
+        onSwap={(o,i)=>{ swap(o,i); setTransfer(null); }}
+        onRemove={(o)=>{ toggle(o); setTransfer(null); }}/>}
 
       <nav className="tabs">
         {[["teams","🏟️","Teams"],["players","🔎","Players"],["myteam","📋","My Team"],["coach","🧠","AI Coach"],["rules","📖","Rules"]].map(([k,ic,l])=>
@@ -564,8 +580,47 @@ function Pitch({squad, sq, cap, vc, onToken, onEmpty}){
   </div>;
 }
 
+/* ---------------- transfers ---------------- */
+function TransferSheet({out, mySquad, players, sq, close, onSwap, onRemove}){
+  const baseCost = mySquad.reduce((s,p)=>s+p.price,0) - out.price; // squad cost without the outgoing player
+  const maxPrice = Math.round((100.001-baseCost)*10)/10;           // most a replacement can cost
+  const list = useMemo(()=> players.filter(c=>
+      c.position===out.position &&                                          // same position keeps the quota valid
+      !mySquad.some(p=>p.id===c.id) &&                                      // not already in the squad
+      (baseCost + c.price) <= 100.001 &&                                    // affordable within $100m
+      mySquad.filter(p=>p.squadId===c.squadId && p.id!==out.id).length < 3  // respects 3-per-nation
+    ).sort((a,b)=> b.proj-a.proj)
+  ,[out,players,mySquad,baseCost]);
+  const t = sq[out.squadId];
+  return <div style={{position:"fixed",inset:0,zIndex:60,background:"rgba(5,8,12,.72)"}} onClick={close}>
+    <div className="card" style={{position:"absolute",left:0,right:0,bottom:0,margin:0,borderRadius:"18px 18px 0 0",maxHeight:"86vh",overflow:"auto",padding:16}} onClick={e=>e.stopPropagation()}>
+      <div className="row" style={{justifyContent:"space-between"}}>
+        <div className="gl">TRANSFER OUT</div>
+        <button className="btn ghost" style={{padding:"4px 10px"}} onClick={close}>✕</button>
+      </div>
+      <div className="row" style={{marginTop:8}}>
+        <span style={{fontSize:24}}>{FLAGS[t.abbr]||"⚽"}</span>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:700,fontSize:15}}>{fullName(out)}</div>
+          <div className="pmeta num">{out.position} · {t.abbr} · ${out.price}m · proj {out.proj}</div>
+        </div>
+        <button className="btn r" style={{fontSize:12,padding:"7px 11px"}} onClick={()=>onRemove(out)}>Remove</button>
+      </div>
+      <div className="pmeta" style={{margin:"11px 2px 2px"}}>
+        Replacements · {out.position} · ≤ <b className="num">${maxPrice.toFixed(1)}m</b> · within 3-per-nation. Tap one to swap in.
+      </div>
+      {list.length===0
+        ? <div className="note" style={{marginTop:8}}>No affordable {out.position} fits your budget and nation limits right now. Remove a different player to free up room.</div>
+        : <div className="card" style={{padding:0,margin:"6px 0 0"}}>
+            {list.slice(0,50).map(c=><PlayerRow key={c.id} p={c} sq={sq} onOpen={cand=>onSwap(out,cand)}/>)}
+            {list.length>50 && <div className="pmeta" style={{padding:"8px 12px"}}>+{list.length-50} more — narrow by freeing up budget.</div>}
+          </div>}
+    </div>
+  </div>;
+}
+
 /* ---------------- my team ---------------- */
-function MyTeam({squad, sq, toggle, cap, vc, setCapVc, goPlayers}) {
+function MyTeam({squad, sq, toggle, cap, vc, setCapVc, goPlayers, onTransfer}) {
   const [view,setView]=useState("pitch");
   const cost = squad.reduce((s,p)=>s+p.price,0);
   const proj = squad.reduce((s,p)=>s+p.proj*(p.id===cap?2:1),0);
@@ -590,16 +645,18 @@ function MyTeam({squad, sq, toggle, cap, vc, setCapVc, goPlayers}) {
       {[["pitch","⚽ Pitch"],["list","≣ List"]].map(([k,l])=>
         <button key={k} className={"chip"+(view===k?" on":"")} onClick={()=>setView(k)}>{l}</button>)}
     </div>
-    {view==="pitch" && <Pitch squad={squad} sq={sq} cap={cap} vc={vc} onEmpty={goPlayers}/>}
+    {view==="pitch" && <Pitch squad={squad} sq={sq} cap={cap} vc={vc} onToken={onTransfer} onEmpty={goPlayers}/>}
     {view==="list" && ["GK","DEF","MID","FWD"].map(pos=>(
       <div key={pos} className="card">
         <div className="gl" style={{marginBottom:7}}>{pos} · {byPos[pos].length}/{QUOTA[pos]}</div>
         {byPos[pos].map(p=>(
           <div key={p.id} className="slot full">
-            <span style={{fontSize:17}}>{FLAGS[sq[p.squadId].abbr]}</span>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:13.5,fontWeight:600}}>{fullName(p)} {p.id===cap&&<span className="cap">C</span>} {p.id===vc&&<span className="vc">VC</span>}</div>
-              <div className="pmeta num">${p.price}m · proj {p.proj} · {(p.start*100)|0}% XI</div>
+            <div className="row" style={{flex:1,minWidth:0,gap:8,cursor:"pointer"}} onClick={()=>onTransfer(p)}>
+              <span style={{fontSize:17}}>{FLAGS[sq[p.squadId].abbr]}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13.5,fontWeight:600}}>{fullName(p)} {p.id===cap&&<span className="cap">C</span>} {p.id===vc&&<span className="vc">VC</span>}</div>
+                <div className="pmeta num">${p.price}m · proj {p.proj} · {(p.start*100)|0}% XI · ⇄ tap to transfer</div>
+              </div>
             </div>
             <button className="chip" onClick={()=>setCapVc(p.id, vc===p.id?null:vc)}>C</button>
             <button className="chip" onClick={()=>setCapVc(cap===p.id?null:cap, p.id)}>VC</button>
