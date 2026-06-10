@@ -229,6 +229,7 @@ table.sc td:first-child{text-align:left;color:var(--dim)}
 .ptok.empty .pn{color:#eafff1;font-weight:600}
 .ptok .pp{font-size:9px;color:var(--dim);margin-top:1px}
 .ptok-cv{position:absolute;top:-7px;right:-7px;z-index:2;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.fixchip{display:inline-flex;gap:3px;align-items:center;vertical-align:middle}
 `;
 
 function NailedMeter({v}) {
@@ -250,15 +251,27 @@ function ConfidenceTag({c}){
     ? <span className="conf exp" title="Blends an expert (RotoWire) group-stage projection">expert-backed</span>
     : <span className="conf mod" title="Model estimate only — no expert projection for this player">model estimate</span>;
 }
+// fixture difficulty colour from the Elo win-prob stored on each fixture (higher = easier)
+function fixColor(d){ return d>0.62? "var(--pitch)" : d>0.42? "var(--amber)" : "var(--red)"; }
+function FixtureDots({squadId, fixtures, sq, max=3}){
+  const fx=(fixtures?.[squadId]||[]).slice(0,max);
+  if(!fx.length) return null;
+  return <span className="fixchip" title="Next fixtures · Elo difficulty (green easy, red hard)">
+    {fx.map((f,i)=><span key={i} className="fixdot" title={sq[f.opp]?.name} style={{background:fixColor(f.diff)}}/>)}
+  </span>;
+}
 
 /* ---------------- player row ---------------- */
-function PlayerRow({p, sq, onAdd, inTeam, onOpen, points}) {
+function PlayerRow({p, sq, onAdd, inTeam, onOpen, points, fixtures}) {
   return (
     <div className="prow" onClick={()=>onOpen&&onOpen(p)}>
       <div style={{width:34,textAlign:"center",fontSize:20}}>{FLAGS[sq[p.squadId].abbr]||"⚽"}</div>
       <div style={{flex:1,minWidth:0}}>
         <div className="pname">{fullName(p)} <SpBadges sp={p.sp}/></div>
-        <div className="pmeta num">{p.position} · {sq[p.squadId].abbr} · ${p.price}m · {p.percentSelected}% owned</div>
+        <div className="pmeta num" style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+          <span>{p.position} · {sq[p.squadId].abbr} · ${p.price}m · {p.percentSelected}% owned</span>
+          <FixtureDots squadId={p.squadId} fixtures={fixtures} sq={sq}/>
+        </div>
         <div className="row" style={{marginTop:5,gap:6}}>
           <NailedMeter v={p.start}/>
           <span className="num" style={{fontSize:10.5,color:"var(--dim)",width:34}}>{(p.start*100)|0}% XI</span>
@@ -376,8 +389,8 @@ function App() {
       {tab==="teams" && (team
         ? <TeamPage t={team} back={()=>setTeam(null)} players={players} sq={sq} fixtures={fixtures} toggle={toggle} myIds={myIds} openP={setDetail}/>
         : <TeamsGrid sq={sq} setTeam={setTeam} players={players}/>)}
-      {tab==="players" && <PlayersView players={players} sq={sq} toggle={toggle} myIds={myIds} openP={setDetail}/>}
-      {tab==="myteam" && <MyTeam squad={mySquad} sq={sq} toggle={toggle} cap={cap} vc={vc}
+      {tab==="players" && <PlayersView players={players} sq={sq} toggle={toggle} myIds={myIds} openP={setDetail} fixtures={fixtures}/>}
+      {tab==="myteam" && <MyTeam squad={mySquad} sq={sq} toggle={toggle} cap={cap} vc={vc} fixtures={fixtures}
         setCapVc={(c,v)=>{setCap(c);setVc(v);persist(myIds,c,v);}} goPlayers={()=>setTab("players")}
         onTransfer={setTransfer}/>}
       {tab==="coach" && (COACH_MODE==="off"
@@ -388,7 +401,7 @@ function App() {
       {tab==="rules" && <Rules/>}
 
       {detail && <Detail p={detail} sq={sq} fixtures={fixtures} close={()=>setDetail(null)} toggle={toggle} inTeam={myIds.includes(detail.id)}/>}
-      {transfer && <TransferSheet out={transfer} mySquad={mySquad} players={players} sq={sq}
+      {transfer && <TransferSheet out={transfer} mySquad={mySquad} players={players} sq={sq} fixtures={fixtures}
         close={()=>setTransfer(null)}
         onSwap={(o,i)=>{ swap(o,i); setTransfer(null); }}
         onRemove={(o)=>{ toggle(o); setTransfer(null); }}/>}
@@ -431,7 +444,7 @@ function FixtureStrip({t, sq, fixtures}) {
   return <div className="card">
     <div className="gl" style={{marginBottom:8}}>GROUP FIXTURES</div>
     {fx.map((f,i)=>{
-      const e = f.diff; const col = e>0.62?"var(--pitch)":e>0.42?"var(--amber)":"var(--red)";
+      const col = fixColor(f.diff);
       return <div key={i} className="row" style={{padding:"6px 0",borderBottom:i<fx.length-1?"1px solid var(--line)":"none"}}>
         <span className="fixdot" style={{background:col}}/>
         <span style={{fontSize:16}}>{FLAGS[sq[f.opp].abbr]}</span>
@@ -463,13 +476,13 @@ function TeamPage({t, back, players, sq, fixtures, toggle, myIds, openP}) {
         <button key={k} className={"chip"+(sort===k?" on":"")} onClick={()=>setSort(k)}>{l}</button>)}
     </div>
     <div className="card" style={{padding:0}}>
-      {list.map(p=><PlayerRow key={p.id} p={p} sq={sq} onAdd={toggle} inTeam={myIds.includes(p.id)} onOpen={openP}/>)}
+      {list.map(p=><PlayerRow key={p.id} p={p} sq={sq} onAdd={toggle} inTeam={myIds.includes(p.id)} onOpen={openP} fixtures={fixtures}/>)}
     </div>
   </>;
 }
 
 /* ---------------- players browser ---------------- */
-function PlayersView({players, sq, toggle, myIds, openP}) {
+function PlayersView({players, sq, toggle, myIds, openP, fixtures}) {
   const [q,setQ]=useState("");
   const [pos,setPos]=useState("ALL");
   const [grp,setGrp]=useState("ALL");
@@ -507,7 +520,7 @@ function PlayersView({players, sq, toggle, myIds, openP}) {
     </div>
     <div className="card" style={{padding:0}}>
       {list.slice(0,cnt).map(p=><PlayerRow key={p.id} p={p} sq={sq} onAdd={toggle} inTeam={myIds.includes(p.id)} onOpen={openP}
-        points={sort==="deep"?p.tourn:null}/>)}
+        points={sort==="deep"?p.tourn:null} fixtures={fixtures}/>)}
     </div>
     {cnt<list.length && <div style={{textAlign:"center",margin:"4px 0 14px"}}>
       <button className="btn ghost" onClick={()=>setCnt(c=>c+60)}>Show more ({list.length-cnt} left)</button></div>}
@@ -532,6 +545,11 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
           <div key={l} style={{flex:1,background:"var(--panel2)",borderRadius:10,padding:"9px 4px",textAlign:"center"}}>
             <div className="bigpt num" style={{fontSize:17}}>{v}</div><div style={{fontSize:9.5,color:"var(--dim)"}}>{l}</div></div>)}
       </div>
+      <div className="row" style={{marginTop:10,gap:8,alignItems:"center"}}>
+        <span className="gl">NEXT</span>
+        <FixtureDots squadId={p.squadId} fixtures={fixtures} sq={sq}/>
+        <span className="pmeta">fixture difficulty (Elo)</span>
+      </div>
       {p.note&&<div className="note" style={{marginTop:8,fontSize:13}}>⚠ {p.note}</div>}
       <div style={{marginTop:12,background:"var(--panel2)",borderRadius:12,padding:"10px 12px"}}>
         <div className="gl" style={{marginBottom:7}}>PROJECTION BASIS</div>
@@ -547,7 +565,7 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
       <div style={{marginTop:12}}>
         <div className="gl">FIXTURES</div>
         {fx.map((f,i)=><div key={i} className="row" style={{padding:"5px 0"}}>
-          <span className="fixdot" style={{background:f.diff>0.62?"var(--pitch)":f.diff>0.42?"var(--amber)":"var(--red)"}}/>
+          <span className="fixdot" style={{background:fixColor(f.diff)}}/>
           <span style={{fontSize:14,flex:1}}>{FLAGS[sq[f.opp].abbr]} {sq[f.opp].name}</span>
           <span className="pmeta num">{new Date(f.date).toLocaleDateString(undefined,{month:"short",day:"numeric"})}</span></div>)}
       </div>
@@ -558,22 +576,23 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
 }
 
 /* ---------------- pitch view ---------------- */
-function PitchToken({p, sq, cap, vc, onClick}){
+function PitchToken({p, sq, cap, vc, onClick, fixtures}){
   const badge = p.id===cap? "cap" : p.id===vc? "vc" : null;
   return <div className="ptok" onClick={onClick} style={onClick?{cursor:"pointer"}:null}>
     {badge && <span className={"ptok-cv "+badge}>{badge==="cap"?"C":"V"}</span>}
     <div style={{fontSize:17,lineHeight:1}}>{FLAGS[sq[p.squadId].abbr]||"⚽"}</div>
     <div className="pn">{pName(p)}</div>
     <div className="pp num">${p.price} · <b style={{color:"var(--pitch)"}}>{p.proj}</b></div>
+    <div style={{marginTop:3,display:"flex",justifyContent:"center"}}><FixtureDots squadId={p.squadId} fixtures={fixtures} sq={sq}/></div>
   </div>;
 }
-function Pitch({squad, sq, cap, vc, onToken, onEmpty}){
+function Pitch({squad, sq, cap, vc, fixtures, onToken, onEmpty}){
   const byPos={GK:[],DEF:[],MID:[],FWD:[]};
   squad.forEach(p=>byPos[p.position].push(p));
   return <div className="pitch">
     {[["FWD",QUOTA.FWD],["MID",QUOTA.MID],["DEF",QUOTA.DEF],["GK",QUOTA.GK]].map(([pos,q])=>(
       <div key={pos} className="prow-p">
-        {byPos[pos].map(p=><PitchToken key={p.id} p={p} sq={sq} cap={cap} vc={vc} onClick={onToken&&(()=>onToken(p))}/>)}
+        {byPos[pos].map(p=><PitchToken key={p.id} p={p} sq={sq} cap={cap} vc={vc} fixtures={fixtures} onClick={onToken&&(()=>onToken(p))}/>)}
         {Array.from({length:Math.max(0,q-byPos[pos].length)}).map((_,i)=>
           <div key={"e"+i} className="ptok empty" onClick={onEmpty}><div style={{fontSize:16}}>+</div><div className="pn">{pos}</div></div>)}
       </div>))}
@@ -581,7 +600,7 @@ function Pitch({squad, sq, cap, vc, onToken, onEmpty}){
 }
 
 /* ---------------- transfers ---------------- */
-function TransferSheet({out, mySquad, players, sq, close, onSwap, onRemove}){
+function TransferSheet({out, mySquad, players, sq, fixtures, close, onSwap, onRemove}){
   const baseCost = mySquad.reduce((s,p)=>s+p.price,0) - out.price; // squad cost without the outgoing player
   const maxPrice = Math.round((100.001-baseCost)*10)/10;           // most a replacement can cost
   const list = useMemo(()=> players.filter(c=>
@@ -612,7 +631,7 @@ function TransferSheet({out, mySquad, players, sq, close, onSwap, onRemove}){
       {list.length===0
         ? <div className="note" style={{marginTop:8}}>No affordable {out.position} fits your budget and nation limits right now. Remove a different player to free up room.</div>
         : <div className="card" style={{padding:0,margin:"6px 0 0"}}>
-            {list.slice(0,50).map(c=><PlayerRow key={c.id} p={c} sq={sq} onOpen={cand=>onSwap(out,cand)}/>)}
+            {list.slice(0,50).map(c=><PlayerRow key={c.id} p={c} sq={sq} onOpen={cand=>onSwap(out,cand)} fixtures={fixtures}/>)}
             {list.length>50 && <div className="pmeta" style={{padding:"8px 12px"}}>+{list.length-50} more — narrow by freeing up budget.</div>}
           </div>}
     </div>
@@ -620,7 +639,7 @@ function TransferSheet({out, mySquad, players, sq, close, onSwap, onRemove}){
 }
 
 /* ---------------- my team ---------------- */
-function MyTeam({squad, sq, toggle, cap, vc, setCapVc, goPlayers, onTransfer}) {
+function MyTeam({squad, sq, toggle, cap, vc, setCapVc, goPlayers, onTransfer, fixtures}) {
   const [view,setView]=useState("pitch");
   const cost = squad.reduce((s,p)=>s+p.price,0);
   const proj = squad.reduce((s,p)=>s+p.proj*(p.id===cap?2:1),0);
@@ -645,7 +664,7 @@ function MyTeam({squad, sq, toggle, cap, vc, setCapVc, goPlayers, onTransfer}) {
       {[["pitch","⚽ Pitch"],["list","≣ List"]].map(([k,l])=>
         <button key={k} className={"chip"+(view===k?" on":"")} onClick={()=>setView(k)}>{l}</button>)}
     </div>
-    {view==="pitch" && <Pitch squad={squad} sq={sq} cap={cap} vc={vc} onToken={onTransfer} onEmpty={goPlayers}/>}
+    {view==="pitch" && <Pitch squad={squad} sq={sq} cap={cap} vc={vc} fixtures={fixtures} onToken={onTransfer} onEmpty={goPlayers}/>}
     {view==="list" && ["GK","DEF","MID","FWD"].map(pos=>(
       <div key={pos} className="card">
         <div className="gl" style={{marginBottom:7}}>{pos} · {byPos[pos].length}/{QUOTA[pos]}</div>
