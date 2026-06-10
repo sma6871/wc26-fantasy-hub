@@ -145,6 +145,7 @@ function buildModel(players, squads, rounds) {
     if(p.scout){ const pg = proj/3; const prob = Math.max(0, Math.min(0.45, (pg-1.8)/5)); proj += 2*3*prob; }
     p.proj = Math.round(proj*10)/10;
     p.expert = rw||null;
+    p.confidence = rw!=null? "expert" : "model";   // expert-backed when a RotoWire value exists, else model-only
     const prog = sq[p.squadId].prog;
     p.tourn = Math.round((p.proj*PROG_MULT[prog]/PROG_MULT.R32)*10)/10;
     p.value = Math.round(p.proj/p.price*100)/100;
@@ -216,6 +217,9 @@ table.sc td:first-child{text-align:left;color:var(--dim)}
 .searchbar input{flex:1}
 .sticky2{position:sticky;top:58px;z-index:25;background:var(--bg);padding-top:4px}
 .draftcard{border:1.5px solid var(--pitch);background:var(--pitchbg);border-radius:16px;padding:12px;margin-top:8px}
+.conf{font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:6px;letter-spacing:.02em;white-space:nowrap;display:inline-block}
+.conf.exp{background:#e7f6ec;color:#15803d}
+.conf.mod{background:#ededea;color:#7c7f88}
 `;
 
 function NailedMeter({v}) {
@@ -232,6 +236,11 @@ function SpBadges({sp}) {
 }
 function pName(p){ return p.knownName || `${(p.firstName||"")[0]||""}. ${p.lastName||""}`; }
 function fullName(p){ return p.knownName || `${p.firstName||""} ${p.lastName||""}`.trim(); }
+function ConfidenceTag({c}){
+  return c==="expert"
+    ? <span className="conf exp" title="Blends an expert (RotoWire) group-stage projection">expert-backed</span>
+    : <span className="conf mod" title="Model estimate only — no expert projection for this player">model estimate</span>;
+}
 
 /* ---------------- player row ---------------- */
 function PlayerRow({p, sq, onAdd, inTeam, onOpen, points}) {
@@ -244,6 +253,7 @@ function PlayerRow({p, sq, onAdd, inTeam, onOpen, points}) {
         <div className="row" style={{marginTop:5,gap:6}}>
           <NailedMeter v={p.start}/>
           <span className="num" style={{fontSize:10.5,color:"var(--dim)",width:34}}>{(p.start*100)|0}% XI</span>
+          <ConfidenceTag c={p.confidence}/>
         </div>
         {p.note && <div className="note">⚠ {p.note}</div>}
       </div>
@@ -488,7 +498,7 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
         <span style={{fontSize:30}}>{FLAGS[t.abbr]}</span>
         <div style={{flex:1}}>
           <div className="disp" style={{fontSize:20,fontWeight:700}}>{fullName(p)} <SpBadges sp={p.sp}/></div>
-          <div className="pmeta num">{p.position} · {t.name} · Group {t.group.toUpperCase()}</div>
+          <div className="pmeta num" style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>{p.position} · {t.name} · Group {t.group.toUpperCase()} <ConfidenceTag c={p.confidence}/></div>
         </div>
         <button className="btn ghost" onClick={close}>✕</button>
       </div>
@@ -497,8 +507,18 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
           <div key={l} style={{flex:1,background:"var(--panel2)",borderRadius:10,padding:"9px 4px",textAlign:"center"}}>
             <div className="bigpt num" style={{fontSize:17}}>{v}</div><div style={{fontSize:9.5,color:"var(--dim)"}}>{l}</div></div>)}
       </div>
-      {p.expert&&<div className="pmeta" style={{marginTop:8}}>Expert model (RotoWire group stage): <b className="num" style={{color:"var(--pitch)"}}>{p.expert}</b> pts</div>}
       {p.note&&<div className="note" style={{marginTop:8,fontSize:13}}>⚠ {p.note}</div>}
+      <div style={{marginTop:12,background:"var(--panel2)",borderRadius:12,padding:"10px 12px"}}>
+        <div className="gl" style={{marginBottom:7}}>PROJECTION BASIS</div>
+        <div className="row" style={{justifyContent:"space-between",padding:"3px 0"}}><span className="pmeta">Team strength</span><span className="num" style={{fontSize:13,fontWeight:600}}>Elo {t.elo} · {PROG_LABEL[t.prog]}</span></div>
+        <div className="row" style={{justifyContent:"space-between",padding:"3px 0"}}><span className="pmeta">Start tier</span><span className="num" style={{fontSize:13,fontWeight:600}}>{(p.start*100)|0}% to start XI</span></div>
+        <div className="row" style={{justifyContent:"space-between",padding:"3px 0"}}><span className="pmeta">Set pieces</span><span>{p.sp? <SpBadges sp={p.sp}/> : <span className="pmeta">none</span>}</span></div>
+        <div className="pmeta" style={{marginTop:6,lineHeight:1.4}}>
+          {p.confidence==="expert"
+            ? <>Blends an expert projection (<b className="num" style={{color:"var(--pitch)"}}>{p.expert}</b> pts, RotoWire group stage) with the model.</>
+            : <>Model estimate only — no expert projection for this player yet.</>}
+        </div>
+      </div>
       <div style={{marginTop:12}}>
         <div className="gl">FIXTURES</div>
         {fx.map((f,i)=><div key={i} className="row" style={{padding:"5px 0"}}>
@@ -686,6 +706,12 @@ function Rules() {
       <div className="gl" style={{marginBottom:8}}>OFFICIAL SCORING — play.fifa.com</div>
       <table className="sc"><thead><tr><th></th><th>GK</th><th>DEF</th><th>MID</th><th>FWD</th></tr></thead>
         <tbody>{SCORING.map((r,i)=><tr key={i}>{r.map((c,j)=><td key={j} className="num">{c}</td>)}</tr>)}</tbody></table>
+    </div>
+    <div className="card">
+      <div className="gl" style={{marginBottom:5}}>ABOUT THE PROJECTIONS</div>
+      <div style={{fontSize:13.5,lineHeight:1.5,color:"var(--ink)",opacity:.85}}>
+        Projected points are <b>pre-tournament estimates</b> from team Elo, starting-XI probability, set-piece duty and expert group-stage values — not official numbers. Expect them to <b>recalibrate after Matchday 1</b>, once real lineups and results land. Players marked <span className="conf exp">expert-backed</span> blend an expert (RotoWire) projection; <span className="conf mod">model estimate</span> players are model-only.
+      </div>
     </div>
     {RULES_TEXT.map(([t,b],i)=><div key={i} className="card"><div className="gl" style={{marginBottom:5}}>{t.toUpperCase()}</div>
       <div style={{fontSize:13.5,lineHeight:1.5,color:"var(--ink)",opacity:.85}}>{b}</div></div>)}
