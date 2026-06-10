@@ -221,14 +221,31 @@ table.sc td:first-child{text-align:left;color:var(--dim)}
 .conf.exp{background:#e7f6ec;color:#15803d}
 .conf.mod{background:#ededea;color:#7c7f88}
 .viewtog{display:flex;gap:7px;padding:2px 12px 10px}
-.pitch{background:linear-gradient(180deg,#1f9d52 0%,#16a34a 58%,#15803d 100%);border-radius:16px;margin:0 12px 10px;padding:16px 6px;box-shadow:0 1px 2px rgba(20,20,15,.06)}
-.prow-p{display:flex;justify-content:center;gap:7px;flex-wrap:wrap;margin:9px 0}
-.ptok{position:relative;width:64px;background:#fff;border-radius:10px;padding:6px 3px 5px;text-align:center;box-shadow:0 1px 3px rgba(8,20,12,.28)}
-.ptok.empty{background:rgba(255,255,255,.14);border:1px dashed rgba(255,255,255,.7);color:#eafff1;cursor:pointer;box-shadow:none;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:54px}
-.ptok .pn{font-size:10.5px;font-weight:700;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;color:var(--ink)}
+.pitch{position:relative;overflow:hidden;border-radius:18px;margin:0 12px 10px;padding:22px 8px 16px;background:linear-gradient(180deg,#2aa55c 0%,#1c9450 55%,#15803d 100%);box-shadow:0 1px 3px rgba(20,40,20,.18)}
+.pitch .stripes{position:absolute;inset:0;z-index:0;background:repeating-linear-gradient(180deg,rgba(255,255,255,.06) 0 30px,rgba(0,0,0,.03) 30px 60px)}
+.pitch .lines{position:absolute;left:7%;right:7%;top:5%;bottom:1%;z-index:0;border:2px solid rgba(255,255,255,.42);border-radius:7px;transform:perspective(680px) rotateX(20deg);transform-origin:50% 100%}
+.pitch .lines::before{content:"";position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border:2px solid rgba(255,255,255,.42);border-radius:50%}
+.pitch .lines::after{content:"";position:absolute;left:0;right:0;top:50%;height:2px;background:rgba(255,255,255,.42)}
+.pitch .pbox{position:absolute;left:30%;right:30%;height:15%;border:2px solid rgba(255,255,255,.38);z-index:0;transform:perspective(680px) rotateX(20deg);transform-origin:50% 100%}
+.pitch .pbox.top{top:5%;border-top:none}
+.pitch .pbox.bot{bottom:1%;border-bottom:none}
+.prow-p{position:relative;z-index:1;display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin:12px 0}
+.ptok{position:relative;width:66px;min-height:44px;cursor:pointer;display:flex;flex-direction:column;align-items:center}
+.jersey{position:relative;width:46px;height:42px;display:flex;align-items:flex-start;justify-content:center;background:linear-gradient(160deg,#fdfdfd,#dfe3e8);clip-path:polygon(30% 0,70% 0,78% 7%,100% 20%,87% 44%,74% 31%,74% 100%,26% 100%,26% 31%,13% 44%,0 20%,22% 7%);filter:drop-shadow(0 2px 2px rgba(8,20,12,.32))}
+.jersey::before{content:"";position:absolute;top:0;left:39%;width:22%;height:14%;background:rgba(0,0,0,.13);clip-path:polygon(0 0,100% 0,50% 100%)}
+.jersey .crest{font-size:15px;margin-top:6px;line-height:1}
+.ptok-card{margin-top:-2px;background:#fff;border-radius:7px;padding:3px 4px 4px;width:100%;text-align:center;box-shadow:0 1px 2px rgba(8,20,12,.25)}
+.ptok .pn{font-size:10.5px;font-weight:700;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.ptok .pp{font-size:9.5px;color:var(--dim);margin-top:1px;font-variant-numeric:tabular-nums}
+.ptok .png{font-size:8.5px;color:var(--pitch);font-weight:700;margin-top:1px;font-variant-numeric:tabular-nums}
+.ptok .fixchip{margin-top:3px;justify-content:center}
+.ptok-x{position:absolute;top:-6px;left:-6px;z-index:3;width:19px;height:19px;border-radius:50%;background:#fff;color:var(--dim);font-size:11px;line-height:19px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.28)}
+.ptok-cv{position:absolute;top:-7px;right:-6px;z-index:3;box-shadow:0 1px 2px rgba(0,0,0,.28)}
+.ptok.empty .jersey{background:rgba(255,255,255,.16);filter:none}
+.ptok.empty .jersey::before{display:none}
+.ptok.empty .jersey .crest{font-size:18px;color:#eafff1;margin-top:8px}
+.ptok.empty .ptok-card{background:rgba(255,255,255,.16)}
 .ptok.empty .pn{color:#eafff1;font-weight:600}
-.ptok .pp{font-size:9px;color:var(--dim);margin-top:1px}
-.ptok-cv{position:absolute;top:-7px;right:-7px;z-index:2;box-shadow:0 1px 2px rgba(0,0,0,.25)}
 .fixchip{display:inline-flex;gap:3px;align-items:center;vertical-align:middle}
 `;
 
@@ -578,23 +595,33 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
 /* ---------------- pitch view ---------------- */
 function PitchToken({p, sq, cap, vc, onClick, fixtures}){
   const badge = p.id===cap? "cap" : p.id===vc? "vc" : null;
-  return <div className="ptok" onClick={onClick} style={onClick?{cursor:"pointer"}:null}>
+  return <div className="ptok" onClick={onClick}>
+    <span className="ptok-x" aria-hidden="true">⇄</span>
     {badge && <span className={"ptok-cv "+badge}>{badge==="cap"?"C":"V"}</span>}
-    <div style={{fontSize:17,lineHeight:1}}>{FLAGS[sq[p.squadId].abbr]||"⚽"}</div>
-    <div className="pn">{pName(p)}</div>
-    <div className="pp num">${p.price} · <b style={{color:"var(--pitch)"}}>{p.proj}</b></div>
-    <div style={{marginTop:3,display:"flex",justifyContent:"center"}}><FixtureDots squadId={p.squadId} fixtures={fixtures} sq={sq}/></div>
+    <div className="jersey"><span className="crest">{FLAGS[sq[p.squadId].abbr]||"⚽"}</span></div>
+    <div className="ptok-card">
+      <div className="pn">{pName(p)}</div>
+      <div className="pp">${p.price}</div>
+      <FixtureDots squadId={p.squadId} fixtures={fixtures} sq={sq}/>
+    </div>
   </div>;
 }
 function Pitch({squad, sq, cap, vc, fixtures, onToken, onEmpty}){
   const byPos={GK:[],DEF:[],MID:[],FWD:[]};
   squad.forEach(p=>byPos[p.position].push(p));
   return <div className="pitch">
+    <div className="stripes"/>
+    <div className="lines"/>
+    <div className="pbox top"/>
+    <div className="pbox bot"/>
     {[["FWD",QUOTA.FWD],["MID",QUOTA.MID],["DEF",QUOTA.DEF],["GK",QUOTA.GK]].map(([pos,q])=>(
       <div key={pos} className="prow-p">
-        {byPos[pos].map(p=><PitchToken key={p.id} p={p} sq={sq} cap={cap} vc={vc} fixtures={fixtures} onClick={onToken&&(()=>onToken(p))}/>)}
+        {byPos[pos].map(p=><PitchToken key={p.id} p={p} sq={sq} cap={cap} vc={vc} fixtures={fixtures} onClick={onToken&&(()=>onToken(p,pos))}/>)}
         {Array.from({length:Math.max(0,q-byPos[pos].length)}).map((_,i)=>
-          <div key={"e"+i} className="ptok empty" onClick={onEmpty}><div style={{fontSize:16}}>+</div><div className="pn">{pos}</div></div>)}
+          <div key={"e"+i} className="ptok empty" onClick={()=>onEmpty&&onEmpty(pos)}>
+            <div className="jersey"><span className="crest">+</span></div>
+            <div className="ptok-card"><div className="pn">{pos}</div></div>
+          </div>)}
       </div>))}
   </div>;
 }
