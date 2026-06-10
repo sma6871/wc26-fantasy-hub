@@ -1,0 +1,8 @@
+# macOS
+.DS_Store
+
+# Build intermediate (build.sh emits then removes this; ignore in case a build aborts)
+app.bundle.js
+
+# Node
+node_modules/
