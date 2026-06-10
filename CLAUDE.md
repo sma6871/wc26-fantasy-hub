@@ -56,6 +56,16 @@ Deployment is automatic: push to the default branch and Vercel redeploys the sta
 To preview locally, open `index.html` in a browser, or serve the folder
 (`npx serve .`). The app fetches live data from FIFA, so it needs network access.
 
+To smoke-test a build without a browser (mounts the compiled `index.html` in jsdom and
+checks 48 teams render plus the My Team pitch, selection sheet, and fixture flows):
+
+```bash
+cd scripts/verify && npm install && npm run verify
+```
+
+This harness lives in its own folder with its own `package.json` so the repo root stays
+config-free and Vercel keeps serving `index.html` statically.
+
 ## Architecture
 
 Single React tree, no router, no state library. React and ReactDOM load from a CDN as
