@@ -60,6 +60,8 @@ check("Players tab renders player rows", root.querySelectorAll(".prow").length >
 check("Fixture-difficulty chips present", root.querySelectorAll(".fixchip").length > 0,
   `(${root.querySelectorAll(".fixchip").length} chips)`);
 check("Confidence labels present", /expert-backed|model estimate/.test(root.textContent));
+check("Start-likelihood tags render (not raw %)",
+  root.querySelectorAll(".stag").length > 0 && /Nailed|Likely|Toss-up|Doubt|Bench/.test(root.textContent));
 
 // My Team: pitch, tokens, badges, fixture chips, next-game date.
 await openTab(2);

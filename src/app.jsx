@@ -191,7 +191,8 @@ input,select{background:var(--panel);border:1px solid var(--line);color:var(--in
 input:focus{border-color:var(--pitch)}
 .pillrow{display:flex;gap:7px;overflow-x:auto;padding:4px 12px 8px;scrollbar-width:none}
 .pillrow::-webkit-scrollbar{display:none}
-.prow{display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+.prow{display:flex;align-items:center;gap:9px;padding:8px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+.prow.owned{background:var(--pitchbg)}
 .prow:last-child{border-bottom:none}
 .pname{font-weight:600;font-size:14.5px;line-height:1.15}
 .pmeta{color:var(--dim);font-size:11.5px;margin-top:2px}
@@ -222,6 +223,8 @@ table.sc td:first-child{text-align:left;color:var(--dim)}
 .conf{font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:6px;letter-spacing:.02em;white-space:nowrap;display:inline-block}
 .conf.exp{background:#e7f6ec;color:#15803d}
 .conf.mod{background:#ededea;color:#7c7f88}
+.stag{font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;letter-spacing:.02em;white-space:nowrap;display:inline-block}
+.st-n{background:#e7f6ec;color:#15803d}.st-l{background:#eef7e1;color:#4d7c0f}.st-t{background:#fff3e4;color:#c2640a}.st-d{background:#fdecec;color:#cf4a4a}.st-b{background:#edece9;color:#7c7f88}
 .viewtog{display:flex;gap:7px;padding:2px 12px 10px}
 .pitch{position:relative;overflow:hidden;border-radius:18px;margin:0 12px 10px;padding:22px 8px 16px;background:linear-gradient(180deg,#2aa55c 0%,#1c9450 55%,#15803d 100%);box-shadow:0 1px 3px rgba(20,40,20,.18)}
 .pitch .stripes{position:absolute;inset:0;z-index:0;background:repeating-linear-gradient(180deg,rgba(255,255,255,.06) 0 30px,rgba(0,0,0,.03) 30px 60px)}
@@ -251,10 +254,6 @@ table.sc td:first-child{text-align:left;color:var(--dim)}
 .fixchip{display:inline-flex;gap:3px;align-items:center;vertical-align:middle}
 `;
 
-function NailedMeter({v}) {
-  const col = v>=0.85? "var(--pitch)" : v>=0.6? "#65a30d" : v>=0.45? "var(--amber)" : "var(--red)";
-  return <div className="meter" title={`Start probability ${(v*100)|0}%`}><i style={{width:`${v*100}%`,background:col}}/></div>;
-}
 function SpBadges({sp}) {
   if(!sp) return null;
   return <span style={{display:"inline-flex",gap:3,marginLeft:5}}>
@@ -270,6 +269,12 @@ function ConfidenceTag({c}){
     ? <span className="conf exp" title="Blends an expert (RotoWire) group-stage projection">expert-backed</span>
     : <span className="conf mod" title="Model estimate only — no expert projection for this player">model estimate</span>;
 }
+// Start likelihood as a clear tier tag rather than a falsely-precise percentage.
+function startTier(v){
+  return v>=0.88? {label:"Nailed",cls:"st-n"} : v>=0.65? {label:"Likely",cls:"st-l"}
+       : v>=0.45? {label:"Toss-up",cls:"st-t"} : v>=0.25? {label:"Doubt",cls:"st-d"} : {label:"Bench",cls:"st-b"};
+}
+function StartTag({v}){ const s=startTier(v); return <span className={"stag "+s.cls} title="Projected starting likelihood">{s.label}</span>; }
 // fixture difficulty colour from the Elo win-prob stored on each fixture (higher = easier)
 function fixColor(d){ return d>0.62? "var(--pitch)" : d>0.42? "var(--amber)" : "var(--red)"; }
 function FixtureDots({squadId, fixtures, sq, max=3}){
@@ -294,27 +299,25 @@ function nextFixtureDate(squadId, fixtures){
 function PlayerRow({p, sq, onAdd, inTeam, onOpen, points, fixtures, lockReason}) {
   const nd = nextFixtureDate(p.squadId, fixtures);
   return (
-    <div className="prow" style={lockReason?{opacity:.5}:null} onClick={()=> lockReason ? null : (onOpen&&onOpen(p))}>
-      <div style={{width:34,textAlign:"center",fontSize:20}}>{FLAGS[sq[p.squadId].abbr]||"⚽"}</div>
+    <div className={"prow"+(inTeam?" owned":"")} style={lockReason?{opacity:.5}:null} onClick={()=> lockReason ? null : (onOpen&&onOpen(p))}>
+      <div style={{width:30,textAlign:"center",fontSize:19,flexShrink:0}}>{FLAGS[sq[p.squadId].abbr]||"⚽"}</div>
       <div style={{flex:1,minWidth:0}}>
-        <div className="pname">{fullName(p)} <SpBadges sp={p.sp}/></div>
-        <div className="pmeta num" style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-          <span>{p.position} · {sq[p.squadId].abbr} · ${p.price}m · {p.percentSelected}% owned</span>
+        <div className="pname" style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+          <span>{fullName(p)}</span><SpBadges sp={p.sp}/><StartTag v={p.start}/>
+        </div>
+        <div className="pmeta num" style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",marginTop:2}}>
+          <span>{p.position} · {sq[p.squadId].abbr} · ${p.price}m · {p.percentSelected}%</span>
           <FixtureDots squadId={p.squadId} fixtures={fixtures} sq={sq}/>
           {nd && <span style={{color:"var(--pitch)",fontWeight:700}}>{nd}</span>}
-        </div>
-        <div className="row" style={{marginTop:5,gap:6}}>
-          <NailedMeter v={p.start}/>
-          <span className="num" style={{fontSize:10.5,color:"var(--dim)",width:34}}>{(p.start*100)|0}% XI</span>
           <ConfidenceTag c={p.confidence}/>
         </div>
         {p.note && <div className="note">⚠ {p.note}</div>}
       </div>
-      <div style={{textAlign:"right"}}>
-        <div className="bigpt num" style={{color:"var(--pitch)"}}>{points!=null? points : p.proj}</div>
-        <div style={{fontSize:9.5,color:"var(--dim)",letterSpacing:".06em"}}>{points!=null?"PTS":"PROJ GS"}</div>
-        {lockReason && <div style={{fontSize:9,color:"var(--red)",fontWeight:700,marginTop:3}}>{lockReason}</div>}
-        {onAdd && <button className={"btn "+(inTeam?"r":"ghost")} style={{padding:"5px 10px",marginTop:5,fontSize:12}}
+      <div style={{textAlign:"right",flexShrink:0}}>
+        <div className="bigpt num" style={{color:"var(--pitch)",fontSize:18}}>{points!=null? points : p.proj}</div>
+        <div style={{fontSize:9,color:"var(--dim)",letterSpacing:".06em"}}>{points!=null?"PTS":"PROJ"}</div>
+        {lockReason && <div style={{fontSize:9,color:"var(--red)",fontWeight:700,marginTop:2}}>{lockReason}</div>}
+        {onAdd && <button className={"btn "+(inTeam?"r":"ghost")} style={{padding:"4px 9px",marginTop:4,fontSize:12}}
           onClick={e=>{e.stopPropagation();onAdd(p);}}>{inTeam?"Remove":"+ Add"}</button>}
       </div>
     </div>
@@ -489,6 +492,7 @@ function FixtureStrip({t, sq, fixtures}) {
 
 function TeamPage({t, back, players, sq, fixtures, toggle, myIds, openP}) {
   const [sort,setSort]=useState("proj");
+  useEffect(()=>{ try{ window.scrollTo(0,0); }catch(e){} },[t.id]);   // open a team scrolled to the top
   const list = players.filter(p=>p.squadId===t.id)
     .sort((a,b)=> sort==="proj"? b.proj-a.proj : sort==="start"? b.start-a.start : sort==="price"? b.price-a.price : b.percentSelected-a.percentSelected);
   return <>
@@ -579,7 +583,7 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
         <button className="btn ghost" onClick={close}>✕</button>
       </div>
       <div className="row" style={{marginTop:14,gap:8}}>
-        {[["$"+p.price+"m","Price"],[p.proj,"Proj (3 GMs)"],[p.tourn,"Deep-run"],[(p.start*100|0)+"%","Start XI"],[p.percentSelected+"%","Owned"]].map(([v,l])=>
+        {[["$"+p.price+"m","Price"],[p.proj,"Proj (3 GMs)"],[p.tourn,"Deep-run"],[startTier(p.start).label,"Start XI"],[p.percentSelected+"%","Owned"]].map(([v,l])=>
           <div key={l} style={{flex:1,background:"var(--panel2)",borderRadius:10,padding:"9px 4px",textAlign:"center"}}>
             <div className="bigpt num" style={{fontSize:17}}>{v}</div><div style={{fontSize:9.5,color:"var(--dim)"}}>{l}</div></div>)}
       </div>
@@ -593,7 +597,7 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
       <div style={{marginTop:12,background:"var(--panel2)",borderRadius:12,padding:"10px 12px"}}>
         <div className="gl" style={{marginBottom:7}}>PROJECTION BASIS</div>
         <div className="row" style={{justifyContent:"space-between",padding:"3px 0"}}><span className="pmeta">Team strength</span><span className="num" style={{fontSize:13,fontWeight:600}}>Elo {t.elo} · {PROG_LABEL[t.prog]}</span></div>
-        <div className="row" style={{justifyContent:"space-between",padding:"3px 0"}}><span className="pmeta">Start tier</span><span className="num" style={{fontSize:13,fontWeight:600}}>{(p.start*100)|0}% to start XI</span></div>
+        <div className="row" style={{justifyContent:"space-between",padding:"3px 0",alignItems:"center"}}><span className="pmeta">Start tier</span><StartTag v={p.start}/></div>
         <div className="row" style={{justifyContent:"space-between",padding:"3px 0"}}><span className="pmeta">Set pieces</span><span>{p.sp? <SpBadges sp={p.sp}/> : <span className="pmeta">none</span>}</span></div>
         <div className="pmeta" style={{marginTop:6,lineHeight:1.4}}>
           {p.confidence==="expert"
@@ -638,7 +642,7 @@ function Pitch({squad, sq, cap, vc, fixtures, onToken, onEmpty}){
     <div className="lines"/>
     <div className="pbox top"/>
     <div className="pbox bot"/>
-    {[["FWD",QUOTA.FWD],["MID",QUOTA.MID],["DEF",QUOTA.DEF],["GK",QUOTA.GK]].map(([pos,q])=>(
+    {[["GK",QUOTA.GK],["DEF",QUOTA.DEF],["MID",QUOTA.MID],["FWD",QUOTA.FWD]].map(([pos,q])=>(
       <div key={pos} className="prow-p">
         {byPos[pos].map(p=><PitchToken key={p.id} p={p} sq={sq} cap={cap} vc={vc} fixtures={fixtures} onClick={onToken&&(()=>onToken(p,pos))}/>)}
         {Array.from({length:Math.max(0,q-byPos[pos].length)}).map((_,i)=>
@@ -728,7 +732,7 @@ function MyTeam({squad, sq, toggle, cap, vc, setCapVc, onPick, fixtures}) {
               <span style={{fontSize:17}}>{FLAGS[sq[p.squadId].abbr]}</span>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:13.5,fontWeight:600}}>{fullName(p)} {p.id===cap&&<span className="cap">C</span>} {p.id===vc&&<span className="vc">VC</span>}</div>
-                <div className="pmeta num">${p.price}m · proj {p.proj} · {(p.start*100)|0}% XI · ⇄ tap to change</div>
+                <div className="pmeta num" style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}><span>${p.price}m · proj {p.proj}</span> <StartTag v={p.start}/> <span>⇄ tap to change</span></div>
               </div>
             </div>
             <button className="chip" onClick={()=>setCapVc(p.id, vc===p.id?null:vc)}>C</button>
