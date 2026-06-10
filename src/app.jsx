@@ -280,11 +280,13 @@ function FixtureDots({squadId, fixtures, sq, max=3}){
   </span>;
 }
 function fmtDate(d){ return new Date(d).toLocaleDateString(undefined,{month:"short",day:"numeric"}); }
-// earliest upcoming fixture for a team, formatted like "Jun 12" (null when none scheduled)
+// next upcoming fixture for a team (earliest one still in the future), formatted like "Jun 12";
+// null when none remain. Filtering to future dates keeps this the NEXT game once matchdays start,
+// not the team's first game of the tournament.
 function nextFixtureDate(squadId, fixtures){
-  const fx = fixtures?.[squadId]||[];
-  if(!fx.length) return null;
-  const next = fx.reduce((a,b)=> new Date(b.date) < new Date(a.date) ? b : a);
+  const upcoming = (fixtures?.[squadId]||[]).filter(f=> new Date(f.date).getTime() >= Date.now());
+  if(!upcoming.length) return null;
+  const next = upcoming.reduce((a,b)=> new Date(b.date) < new Date(a.date) ? b : a);
   return fmtDate(next.date);
 }
 
