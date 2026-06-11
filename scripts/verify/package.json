@@ -1,0 +1,15 @@
+{
+  "name": "wc26-verify",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Headless jsdom render-smoke for the compiled index.html. Isolated from the repo root so Vercel's zero-config static deploy is unaffected.",
+  "scripts": {
+    "verify": "node render-smoke.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

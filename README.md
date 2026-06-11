@@ -1,5 +1,9 @@
 # WC26 Fantasy Hub
 
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/sma6871)
+
+Live at **[fantasy26.help](https://fantasy26.help)**.
+
 An unofficial World Cup 2026 fantasy planner: all 48 teams, projected points, starting-XI
 probabilities, set-piece takers, and a squad builder that enforces the official rules
 (15 players, $100m budget, 2/5/5/3 quota, max 3 per nation, captain/vice).
@@ -12,6 +16,7 @@ lineup/fitness research.
 It's a single self-contained `index.html` (React via CDN, no build step).
 - Open locally: just open the file in a browser.
 - Deploy: drop the repo into Vercel (or any static host). No configuration needed.
+- Production: served at [https://fantasy26.help](https://fantasy26.help).
 
 ## AI Coach
 The public build ships with the coach disabled (shows a waitlist link).
