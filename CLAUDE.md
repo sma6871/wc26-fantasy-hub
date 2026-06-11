@@ -2,7 +2,8 @@
 
 Unofficial World Cup 2026 fantasy planner. All 48 teams, projected points, starting-XI
 probabilities, set-piece takers, and a squad builder that enforces the official FIFA World
-Cup Fantasy rules. Mobile-first single-page React app, deployed as a static site on Vercel.
+Cup Fantasy rules. Mobile-first single-page React app, deployed as a static site on Vercel
+and served in production at https://fantasy26.help.
 
 This file is the working context for Claude Code. Read it before making changes.
 
@@ -51,7 +52,8 @@ build config. The source of truth is `src/app.jsx`. After editing the source, al
 ```
 
 Deployment is automatic: push to the default branch and Vercel redeploys the static
-`index.html`. There is no server, no bundler step on Vercel, no environment variables.
+`index.html`, served in production at https://fantasy26.help (custom domain on Vercel).
+There is no server, no bundler step on Vercel, no environment variables.
 
 To preview locally, open `index.html` in a browser, or serve the folder
 (`npx serve .`). The app fetches live data from FIFA, so it needs network access.

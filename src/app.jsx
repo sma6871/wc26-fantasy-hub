@@ -154,6 +154,11 @@ function buildModel(players, squads, rounds) {
     p.sp = INTEL[p.id]?.sp||"";
     p.note = INTEL[p.id]?.n||"";
     p.start = p._st;
+    // team-level projected goals carried onto every player (shared across the squad, not per-player)
+    const ptx = teamX[p.squadId];
+    p.txg = ptx.xgf/ptx.n;      // goals for, per group game
+    p.txgc = ptx.xga/ptx.n;     // goals conceded, per group game
+    p.tcs = ptx.cs/ptx.n;       // clean-sheet probability, per group game (0-1)
   });
   return {sq, fixtures, teamX};
 }
@@ -210,8 +215,10 @@ table.sc{width:100%;border-collapse:collapse;font-size:13px}
 table.sc td,table.sc th{padding:7px 6px;border-bottom:1px solid var(--line);text-align:center}
 table.sc td:first-child{text-align:left;color:var(--dim)}
 .grp{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 12px}
-@media(min-width:720px){.grp{grid-template-columns:repeat(3,1fr)}.app{max-width:860px;margin:0 auto}}
-.tcard{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:11px;cursor:pointer;box-shadow:0 1px 2px rgba(20,20,15,.04)}
+/* groups have exactly 4 teams: 2 cols on mobile (2+2), 4 cols on desktop (one tidy row) - avoids the lopsided 3+1 */
+@media(min-width:760px){.grp{grid-template-columns:repeat(4,1fr);gap:12px}.app{max-width:1120px;margin:0 auto}}
+.tcard{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:11px;cursor:pointer;box-shadow:0 1px 2px rgba(20,20,15,.04);transition:transform .12s ease,box-shadow .12s ease,border-color .12s ease}
+@media(hover:hover){.tcard:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(20,20,15,.10);border-color:#d7e9dc}}
 .gl{font-weight:700;color:var(--dim);font-size:11px;letter-spacing:.1em}
 .spin{display:inline-block;width:18px;height:18px;border:2px solid var(--line);border-top-color:var(--pitch);border-radius:50%;animation:sp 1s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -225,6 +232,27 @@ table.sc td:first-child{text-align:left;color:var(--dim)}
 .conf.mod{background:#ededea;color:#7c7f88}
 .stag{font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;letter-spacing:.02em;white-space:nowrap;display:inline-block}
 .st-n{background:#e7f6ec;color:#15803d}.st-l{background:#eef7e1;color:#4d7c0f}.st-t{background:#fff3e4;color:#c2640a}.st-d{background:#fdecec;color:#cf4a4a}.st-b{background:#edece9;color:#7c7f88}
+.tchip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;font-variant-numeric:tabular-nums;cursor:help}
+.tone-slate{background:#eef0f3;color:#475569}.tone-green{background:#e7f6ec;color:#15803d}.tone-amber{background:#fff3e4;color:#c2640a}.tone-red{background:#fdecec;color:#cf4a4a}.tone-gold{background:#fbefcf;color:#a9780a}.tone-blue{background:#eaf1ff;color:#3b6fd4}.tone-violet{background:#f1ebfd;color:#7c3aed}
+.tchiprow{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.mchip-row{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+.mchip{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:999px;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;border:1px solid transparent;box-shadow:0 1px 2px rgba(20,20,15,.06);cursor:help;line-height:1}
+.mchip .ic{font-size:13px;line-height:1;filter:saturate(1.1)}
+.mchip .lab{font-weight:600;opacity:.62;font-size:10px;letter-spacing:.01em}
+.mc-slate{background:linear-gradient(135deg,#f5f6f9,#e8ebf1);color:#475569;border-color:#dde2ea}
+.mc-blue{background:linear-gradient(135deg,#eef4ff,#dbe8ff);color:#2f5fc4;border-color:#cfe0ff}
+.mc-green{background:linear-gradient(135deg,#eafaf0,#d4f2df);color:#15803d;border-color:#bdeccd}
+.mc-amber{background:linear-gradient(135deg,#fff6e9,#ffe8c9);color:#b4640a;border-color:#f9d9aa}
+.mc-red{background:linear-gradient(135deg,#fdeeee,#fbd9d9);color:#cf3a3f;border-color:#f4c6c6}
+.mc-gold{background:linear-gradient(135deg,#fdf3d6,#f6e4a6);color:#946b05;border-color:#edd693}
+.mc-violet{background:linear-gradient(135deg,#f3edfd,#e6d9fb);color:#7c3aed;border-color:#dbc9f6}
+.mc-ink{background:linear-gradient(135deg,#33353c,#17181c);color:#fff;border-color:#0c0d10}
+.mc-ink .lab{opacity:.7}
+.coffee{display:inline-block;font-size:12px;font-weight:600;color:var(--dim);text-decoration:none;padding:5px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);transition:color .15s,border-color .15s}
+.coffee:hover{color:var(--acc);border-color:var(--acc)}
+.hdr-coffee{flex-shrink:0;font-size:11.5px;font-weight:600;color:var(--dim);text-decoration:none;white-space:nowrap;padding:4px 9px;border-radius:999px;border:1px solid var(--line);background:var(--panel);transition:color .15s,border-color .15s;margin-top:2px}
+.hdr-coffee:hover{color:var(--acc);border-color:var(--acc)}
+@media(max-width:430px){.hdr-coffee-txt{display:none}}
 .viewtog{display:flex;gap:7px;padding:2px 12px 10px}
 .pitch{position:relative;overflow:hidden;border-radius:18px;margin:0 12px 10px;padding:22px 8px 16px;background:linear-gradient(180deg,#2aa55c 0%,#1c9450 55%,#15803d 100%);box-shadow:0 1px 3px rgba(20,40,20,.18)}
 .pitch .stripes{position:absolute;inset:0;z-index:0;background:repeating-linear-gradient(180deg,rgba(255,255,255,.06) 0 30px,rgba(0,0,0,.03) 30px 60px)}
@@ -275,6 +303,22 @@ function startTier(v){
        : v>=0.45? {label:"Toss-up",cls:"st-t"} : v>=0.25? {label:"Doubt",cls:"st-d"} : {label:"Bench",cls:"st-b"};
 }
 function StartTag({v}){ const s=startTier(v); return <span className={"stag "+s.cls} title="Projected starting likelihood">{s.label}</span>; }
+function Chip({tone="slate", title, children}){ return <span className={"tchip tone-"+tone} title={title}>{children}</span>; }
+const PROG_TONE={TITLE:"gold",SF:"violet",QF:"violet",R16:"blue",R32:"slate"};
+function eloTone(e){ return e>=1950?"green":e>=1820?"blue":e>=1680?"amber":"red"; }
+// one-word strength read on the Elo number, for the chip's trailing label
+function eloWord(e){ return e>=1950?"Elite":e>=1820?"Strong":e>=1680?"Solid":e>=1500?"Outsider":"Underdog"; }
+const PROG_ICON={TITLE:"🏆",SF:"🔥",QF:"⭐",R16:"📈",R32:"🎯"};
+// quality-based tones for the projected-goals chips (so colour itself carries meaning)
+function xgTone(v){ return v>=2.1?"green":v>=1.5?"blue":v>=1.1?"amber":"slate"; }   // attack: higher = better
+function xgcTone(v){ return v<=0.9?"green":v<=1.3?"amber":"red"; }                   // defence: lower = better
+function csTone(p){ return p>=40?"green":p>=28?"blue":p>=18?"amber":"slate"; }       // clean-sheet odds
+// creative pill chip: leading icon + value + faint trailing label, coloured by tone
+function StatChip({tone="slate", icon, title, label, children}){
+  return <span className={"mchip mc-"+tone} title={title}>
+    {icon&&<span className="ic">{icon}</span>}<span>{children}</span>
+    {label&&<span className="lab">{label}</span>}</span>;
+}
 // fixture difficulty colour from the Elo win-prob stored on each fixture (higher = easier)
 function fixColor(d){ return d>0.62? "var(--pitch)" : d>0.42? "var(--amber)" : "var(--red)"; }
 function FixtureDots({squadId, fixtures, sq, max=3}){
@@ -296,7 +340,7 @@ function nextFixtureDate(squadId, fixtures){
 }
 
 /* ---------------- player row ---------------- */
-function PlayerRow({p, sq, onAdd, inTeam, onOpen, points, fixtures, lockReason}) {
+function PlayerRow({p, sq, onAdd, inTeam, onOpen, points, pointsLabel, fixtures, lockReason}) {
   const nd = nextFixtureDate(p.squadId, fixtures);
   return (
     <div className={"prow"+(inTeam?" owned":"")} style={lockReason?{opacity:.5}:null} onClick={()=> lockReason ? null : (onOpen&&onOpen(p))}>
@@ -315,7 +359,7 @@ function PlayerRow({p, sq, onAdd, inTeam, onOpen, points, fixtures, lockReason})
       </div>
       <div style={{textAlign:"right",flexShrink:0}}>
         <div className="bigpt num" style={{color:"var(--pitch)",fontSize:18}}>{points!=null? points : p.proj}</div>
-        <div style={{fontSize:9,color:"var(--dim)",letterSpacing:".06em"}}>{points!=null?"PTS":"PROJ"}</div>
+        <div style={{fontSize:9,color:"var(--dim)",letterSpacing:".06em"}}>{points!=null?(pointsLabel||"PTS"):"PROJ"}</div>
         {lockReason && <div style={{fontSize:9,color:"var(--red)",fontWeight:700,marginTop:2}}>{lockReason}</div>}
         {onAdd && <button className={"btn "+(inTeam?"r":"ghost")} style={{padding:"4px 9px",marginTop:4,fontSize:12}}
           onClick={e=>{e.stopPropagation();onAdd(p);}}>{inTeam?"Remove":"+ Add"}</button>}
@@ -410,19 +454,24 @@ function App() {
       <div className="spin"/><div className="fade" style={{fontSize:13}}>Loading squads, prices & fixtures…</div>
     </div></div>;
 
-  const {players, sq, fixtures} = data;
+  const {players, sq, fixtures, teamX} = data;
   const mySquad = myIds.map(i=>players.find(p=>p.id===i)).filter(Boolean);
 
   return (
     <div className="app">
       <style>{css}</style>
       <div className="hdr">
-        <h1 className="disp">WC26 <b>FANTASY</b> HUB</h1>
-        <div className="sub">Official prices ({data.live? "live" : "snapshot Jun 10"}) · 48 teams · {players.length} players · starting-XI intel</div>
+        <div className="row" style={{justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
+          <div style={{minWidth:0,flex:1}}>
+            <h1 className="disp">WC26 <b>FANTASY</b> HUB</h1>
+            <div className="sub" style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Official prices ({data.live? "live" : "snapshot Jun 10"}) · 48 teams · {players.length} players · starting-XI intel</div>
+          </div>
+          <a className="hdr-coffee" href="https://buymeacoffee.com/sma6871" target="_blank" rel="noopener noreferrer" title="Support this tool">☕ <span className="hdr-coffee-txt">Support this tool</span></a>
+        </div>
       </div>
 
       {tab==="teams" && (team
-        ? <TeamPage t={team} back={()=>setTeam(null)} players={players} sq={sq} fixtures={fixtures} toggle={toggle} myIds={myIds} openP={setDetail}/>
+        ? <TeamPage t={team} back={()=>setTeam(null)} players={players} sq={sq} fixtures={fixtures} teamX={teamX} toggle={toggle} myIds={myIds} openP={setDetail}/>
         : <TeamsGrid sq={sq} setTeam={setTeam} players={players}/>)}
       {tab==="players" && <PlayersView players={players} sq={sq} toggle={toggle} myIds={myIds} openP={setDetail} fixtures={fixtures}/>}
       {tab==="myteam" && <MyTeam squad={mySquad} sq={sq} toggle={toggle} cap={cap} vc={vc} fixtures={fixtures}
@@ -490,21 +539,46 @@ function FixtureStrip({t, sq, fixtures}) {
   </div>;
 }
 
-function TeamPage({t, back, players, sq, fixtures, toggle, myIds, openP}) {
+function TeamPage({t, back, players, sq, fixtures, teamX, toggle, myIds, openP}) {
   const [sort,setSort]=useState("proj");
   useEffect(()=>{ try{ window.scrollTo(0,0); }catch(e){} },[t.id]);   // open a team scrolled to the top
   const list = players.filter(p=>p.squadId===t.id)
     .sort((a,b)=> sort==="proj"? b.proj-a.proj : sort==="start"? b.start-a.start : sort==="price"? b.price-a.price : b.percentSelected-a.percentSelected);
+  // per-group-game projected goals from the Elo model (xG for, xG conceded, clean-sheet odds)
+  const tx = teamX && teamX[t.id];
+  const xgpg = tx ? tx.xgf/tx.n : null;     // projected goals for, per group game
+  const xgcpg = tx ? tx.xga/tx.n : null;    // projected goals conceded, per group game
+  const cspg = tx ? Math.round(tx.cs/tx.n*100) : null;
   return <>
     <div className="card">
       <div className="row">
         <button className="btn ghost" style={{padding:"6px 11px"}} onClick={back}>←</button>
         <span style={{fontSize:30}}>{FLAGS[t.abbr]}</span>
-        <div>
+        <div style={{flex:1,minWidth:0}}>
           <div className="disp" style={{fontSize:20,fontWeight:700}}>{t.name}</div>
-          <div className="pmeta num">Group {t.group.toUpperCase()} · Elo {t.elo} · {PROG_LABEL[t.prog]}</div>
+          <div className="pmeta">Group {t.group.toUpperCase()} stage outlook</div>
         </div>
       </div>
+      <div className="mchip-row">
+        <StatChip tone="ink" icon="🌍" title="Group-stage draw">Group {t.group.toUpperCase()}</StatChip>
+        <StatChip tone={eloTone(t.elo)} icon="📊" label={eloWord(t.elo)}
+          title="Elo rating: a single number for overall team strength. About 1500 is average, 1800+ is strong, 2000+ is world-class. The model uses it to estimate each match's win and clean-sheet odds.">
+          Elo {t.elo}</StatChip>
+        <StatChip tone={PROG_TONE[t.prog]} icon={PROG_ICON[t.prog]}
+          title="How far the model expects this team to advance. It scales each player's knockout (deep-run) projected points.">
+          {PROG_LABEL[t.prog]}</StatChip>
+      </div>
+      {tx && <div className="mchip-row">
+        <StatChip tone={xgTone(xgpg)} icon="⚽" label="/ game"
+          title="Projected goals scored per group game (xG), from the Elo matchup model. Higher is better.">
+          {xgpg.toFixed(1)} xG</StatChip>
+        <StatChip tone={xgcTone(xgcpg)} icon="🥅" label="/ game"
+          title="Projected goals conceded per group game (xGC), from the Elo matchup model. Lower is better.">
+          {xgcpg.toFixed(1)} xGC</StatChip>
+        <StatChip tone={csTone(cspg)} icon="🛡️" label="per game"
+          title="Clean-sheet probability per group game, derived from projected goals conceded.">
+          {cspg}% CS</StatChip>
+      </div>}
     </div>
     <FixtureStrip t={t} sq={sq} fixtures={fixtures}/>
     <div className="pillrow">
@@ -518,8 +592,9 @@ function TeamPage({t, back, players, sq, fixtures, toggle, myIds, openP}) {
 }
 
 /* ---------------- shared player filtering (Players tab + selection sheet) ---------------- */
-const SORT_OPTS=[["proj","Proj pts"],["deep","Deep-run pts"],["value","Value /$"],["start","Nailed"],["price","Price"],["sel","Owned %"]];
-const SORT_KEY={proj:p=>p.proj, value:p=>p.value, price:p=>p.price, sel:p=>p.percentSelected, start:p=>p.start, deep:p=>p.tourn};
+const SORT_OPTS=[["proj","Proj pts"],["deep","Deep-run pts"],["value","Value /$"],["start","Nailed"],["price","Price"],["sel","Owned %"],["xg","Team xG"],["xgc","Team xGC"],["cs","Clean sheet"]];
+// all keys sorted descending (key(b)-key(a)); xGC is negated so the best (lowest) defences come first
+const SORT_KEY={proj:p=>p.proj, value:p=>p.value, price:p=>p.price, sel:p=>p.percentSelected, start:p=>p.start, deep:p=>p.tourn, xg:p=>p.txg, xgc:p=>-p.txgc, cs:p=>p.tcs};
 const PRICE_OPTS=[["≤4.5m",4.5],["≤5.5m",5.5],["≤6.5m",6.5],["≤8m",8],["Any price",11]];
 function applyPlayerFilters(players, sq, f){
   let l=players;
@@ -552,6 +627,14 @@ function PlayerFilters({f, setF, lockPos, showGroup=true}){
 }
 
 /* ---------------- players browser ---------------- */
+// right-column metric to surface for the active sort (so the value you sorted by is visible)
+function sortMetric(p, sort){
+  if(sort==="deep") return {v:p.tourn, l:"PTS"};
+  if(sort==="xg")   return {v:p.txg.toFixed(1), l:"xG"};
+  if(sort==="xgc")  return {v:p.txgc.toFixed(1), l:"xGC"};
+  if(sort==="cs")   return {v:Math.round(p.tcs*100)+"%", l:"CS"};
+  return null;
+}
 function PlayersView({players, sq, toggle, myIds, openP, fixtures}) {
   const [f,setF]=useState({q:"",pos:"ALL",grp:"ALL",maxP:11,sort:"proj"});
   const [cnt,setCnt]=useState(60);
@@ -561,8 +644,8 @@ function PlayersView({players, sq, toggle, myIds, openP, fixtures}) {
       <PlayerFilters f={f} setF={setF}/>
     </div>
     <div className="card" style={{padding:0}}>
-      {list.slice(0,cnt).map(p=><PlayerRow key={p.id} p={p} sq={sq} onAdd={toggle} inTeam={myIds.includes(p.id)} onOpen={openP}
-        points={f.sort==="deep"?p.tourn:null} fixtures={fixtures}/>)}
+      {list.slice(0,cnt).map(p=>{ const m=sortMetric(p,f.sort); return <PlayerRow key={p.id} p={p} sq={sq} onAdd={toggle} inTeam={myIds.includes(p.id)} onOpen={openP}
+        points={m?m.v:null} pointsLabel={m?m.l:null} fixtures={fixtures}/>; })}
     </div>
     {cnt<list.length && <div style={{textAlign:"center",margin:"4px 0 14px"}}>
       <button className="btn ghost" onClick={()=>setCnt(c=>c+60)}>Show more ({list.length-cnt} left)</button></div>}
@@ -597,6 +680,14 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
       <div style={{marginTop:12,background:"var(--panel2)",borderRadius:12,padding:"10px 12px"}}>
         <div className="gl" style={{marginBottom:7}}>PROJECTION BASIS</div>
         <div className="row" style={{justifyContent:"space-between",padding:"3px 0"}}><span className="pmeta">Team strength</span><span className="num" style={{fontSize:13,fontWeight:600}}>Elo {t.elo} · {PROG_LABEL[t.prog]}</span></div>
+        <div style={{padding:"5px 0 2px"}}>
+          <span className="pmeta">Team goals / game</span>
+          <div className="mchip-row" style={{marginTop:6}}>
+            <StatChip tone={xgTone(p.txg)} icon="⚽" title="Team's projected goals scored per group game (xG)">{p.txg.toFixed(1)} xG</StatChip>
+            <StatChip tone={xgcTone(p.txgc)} icon="🥅" title="Team's projected goals conceded per group game (xGC), lower is better">{p.txgc.toFixed(1)} xGC</StatChip>
+            <StatChip tone={csTone(Math.round(p.tcs*100))} icon="🛡️" title="Team's clean-sheet probability per group game">{Math.round(p.tcs*100)}% CS</StatChip>
+          </div>
+        </div>
         <div className="row" style={{justifyContent:"space-between",padding:"3px 0",alignItems:"center"}}><span className="pmeta">Start tier</span><StartTag v={p.start}/></div>
         <div className="row" style={{justifyContent:"space-between",padding:"3px 0"}}><span className="pmeta">Set pieces</span><span>{p.sp? <SpBadges sp={p.sp}/> : <span className="pmeta">none</span>}</span></div>
         <div className="pmeta" style={{marginTop:6,lineHeight:1.4}}>
@@ -742,6 +833,9 @@ function MyTeam({squad, sq, toggle, cap, vc, setCapVc, onPick, fixtures}) {
         {Array.from({length:QUOTA[pos]-byPos[pos].length}).map((_,i)=>
           <div key={i} className="slot" onClick={()=>onPick(null,pos)} style={{cursor:"pointer",color:"var(--dim)",fontSize:13}}>+ Add a {pos}</div>)}
       </div>))}
+    {squad.length===15 && <div style={{textAlign:"center",padding:"2px 0 6px"}}>
+      <a className="coffee" href="https://buymeacoffee.com/sma6871" target="_blank" rel="noopener noreferrer">Enjoying it? ☕ Buy me a coffee</a>
+    </div>}
   </>;
 }
 
@@ -891,6 +985,9 @@ function Rules() {
       <div style={{fontSize:13,lineHeight:1.55,color:"var(--amber)"}}>{NOTABLE_ABSENCES}</div></div>
     <div className="card pmeta" style={{lineHeight:1.5}}>
       Data: official play.fifa.com fantasy feeds (prices, ownership, live points — refresh anytime), World Football Elo Ratings, expert group-stage projections (RotoWire, June 9) and curated lineup/fitness research. Projections are estimates — lineups drop ~1h before kick-off.</div>
+    <div style={{textAlign:"center",padding:"2px 0 8px"}}>
+      <a className="coffee" href="https://buymeacoffee.com/sma6871" target="_blank" rel="noopener noreferrer">Buy me a coffee ☕</a>
+    </div>
   </>;
 }
 
