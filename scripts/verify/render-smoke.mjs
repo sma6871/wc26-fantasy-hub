@@ -46,12 +46,13 @@ const check = (name, cond, extra = "") => results.push({ name, ok: !!cond, extra
 new Function(bundle)();
 await wait(150);
 
-// Headline requirement: all 48 team cards render.
-const teamCards = root.querySelectorAll(".tcard").length;
-check("Teams tab renders 48 team cards", teamCards === 48, `(got ${teamCards})`);
-
 const tabs = () => root.querySelectorAll("nav.tabs .tab");
 async function openTab(i) { tabs()[i].click(); await wait(80); }
+
+// App opens on the Players tab by default; switch to Teams to assert the grid.
+await openTab(0);
+const teamCards = root.querySelectorAll(".tcard").length;
+check("Teams tab renders 48 team cards", teamCards === 48, `(got ${teamCards})`);
 
 // Players tab: rows + fixture chips + confidence labels.
 await openTab(1);
