@@ -44,7 +44,7 @@ cat > index.html <<'HTML_HEAD'
 HTML_HEAD
 
 cat app.bundle.js >> index.html
-printf '\n</script>\n</body>\n</html>\n' >> index.html
+printf '\n</script>\n<script defer src="/_vercel/insights/script.js"></script>\n</body>\n</html>\n' >> index.html
 rm -f app.bundle.js
 
 echo "Done. Wrote index.html ($(wc -c < index.html) bytes)."
