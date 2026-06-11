@@ -248,6 +248,9 @@ table.sc td:first-child{text-align:left;color:var(--dim)}
 .mc-violet{background:linear-gradient(135deg,#f3edfd,#e6d9fb);color:#7c3aed;border-color:#dbc9f6}
 .mc-ink{background:linear-gradient(135deg,#33353c,#17181c);color:#fff;border-color:#0c0d10}
 .mc-ink .lab{opacity:.7}
+.appfoot{display:flex;justify-content:center;flex-wrap:wrap;gap:8px 16px;padding:12px 12px 18px;margin-top:4px}
+.appfoot a{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--dim);text-decoration:none;white-space:nowrap;transition:color .15s}
+.appfoot a:hover{color:var(--acc)}
 .coffee{display:inline-block;font-size:12px;font-weight:600;color:var(--dim);text-decoration:none;padding:5px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);transition:color .15s,border-color .15s}
 .coffee:hover{color:var(--acc);border-color:var(--acc)}
 .hdr-coffee{flex-shrink:0;font-size:11.5px;font-weight:600;color:var(--dim);text-decoration:none;white-space:nowrap;padding:4px 9px;border-radius:999px;border:1px solid var(--line);background:var(--panel);transition:color .15s,border-color .15s;margin-top:2px}
@@ -502,6 +505,12 @@ function App() {
             msgs={chat} setMsgs={setChatPersist}
             onApply={(ids,c,v)=>{ setMyIds(ids); setCap(c); setVc(v); persist(ids,c,v); setTab("myteam"); }}/>)}
       {tab==="rules" && <Rules/>}
+
+      <footer className="appfoot">
+        <a href="https://github.com/sma6871/wc26-fantasy-hub" target="_blank" rel="noopener noreferrer">🐙 GitHub</a>
+        <a href="https://x.com/MasFPL" target="_blank" rel="noopener noreferrer">🐦 Twitter</a>
+        <a href="https://buymeacoffee.com/sma6871" target="_blank" rel="noopener noreferrer">☕ Buy me a coffee</a>
+      </footer>
 
       {detail && <Detail p={detail} sq={sq} fixtures={fixtures} close={goBack} toggle={toggle} inTeam={myIds.includes(detail.id)}/>}
       {picker && <SelectSheet slot={picker} mySquad={mySquad} players={players} sq={sq} fixtures={fixtures}
