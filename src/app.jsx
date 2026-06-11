@@ -370,7 +370,7 @@ function PlayerRow({p, sq, onAdd, inTeam, onOpen, points, pointsLabel, fixtures,
 
 /* ---------------- main app ---------------- */
 function App() {
-  const [tab,setTab]=useState("teams");
+  const [tab,setTab]=useState("players");
   const [data,setData]=useState(null);
   const [err,setErr]=useState(null);
   const [team,setTeam]=useState(null);           // selected team page
@@ -380,6 +380,25 @@ function App() {
   const [detail,setDetail]=useState(null);       // player detail sheet
   const [picker,setPicker]=useState(null);       // {out, position} for the in-place selection sheet
   const [chat,setChat]=useState([GREETING]);
+
+  // --- Android / browser back button -------------------------------------------------
+  // Opening a sub-view (team page, player detail sheet, selection sheet) pushes a history
+  // entry. Pressing back fires popstate; we close the topmost open sub-view instead of
+  // leaving the app. Every close routes through goBack() so history stays 1:1 with views.
+  const pushView = (view)=>{ try{ window.history.pushState({view}, ""); }catch(e){} };
+  const openTeam   = (t)=>{ pushView("team");   setTeam(t); };
+  const openDetail = (p)=>{ pushView("detail"); setDetail(p); };
+  const openPicker = (slot)=>{ pushView("picker"); setPicker(slot); };
+  const goBack = ()=>{ try{ window.history.back(); }catch(e){ setPicker(null); setDetail(null); setTeam(null); } };
+  useEffect(()=>{
+    const onPop = ()=>{                 // close only the topmost open sub-view (innermost first)
+      if(picker) setPicker(null);
+      else if(detail) setDetail(null);
+      else if(team) setTeam(null);
+    };
+    window.addEventListener("popstate", onPop);
+    return ()=>window.removeEventListener("popstate", onPop);
+  },[team, detail, picker]);
 
   // chat persistence
   useEffect(()=>{ (async()=>{ try{
@@ -471,12 +490,12 @@ function App() {
       </div>
 
       {tab==="teams" && (team
-        ? <TeamPage t={team} back={()=>setTeam(null)} players={players} sq={sq} fixtures={fixtures} teamX={teamX} toggle={toggle} myIds={myIds} openP={setDetail}/>
-        : <TeamsGrid sq={sq} setTeam={setTeam} players={players}/>)}
-      {tab==="players" && <PlayersView players={players} sq={sq} toggle={toggle} myIds={myIds} openP={setDetail} fixtures={fixtures}/>}
+        ? <TeamPage t={team} back={goBack} players={players} sq={sq} fixtures={fixtures} teamX={teamX} toggle={toggle} myIds={myIds} openP={openDetail}/>
+        : <TeamsGrid sq={sq} setTeam={openTeam} players={players}/>)}
+      {tab==="players" && <PlayersView players={players} sq={sq} toggle={toggle} myIds={myIds} openP={openDetail} fixtures={fixtures}/>}
       {tab==="myteam" && <MyTeam squad={mySquad} sq={sq} toggle={toggle} cap={cap} vc={vc} fixtures={fixtures}
         setCapVc={(c,v)=>{setCap(c);setVc(v);persist(myIds,c,v);}}
-        onPick={(out,position)=>setPicker({out, position: position || (out&&out.position)})}/>}
+        onPick={(out,position)=>openPicker({out, position: position || (out&&out.position)})}/>}
       {tab==="coach" && (COACH_MODE==="off"
         ? <CoachWaitlist/>
         : <Coach players={players} sq={sq} mySquad={mySquad} cap={cap}
@@ -484,15 +503,15 @@ function App() {
             onApply={(ids,c,v)=>{ setMyIds(ids); setCap(c); setVc(v); persist(ids,c,v); setTab("myteam"); }}/>)}
       {tab==="rules" && <Rules/>}
 
-      {detail && <Detail p={detail} sq={sq} fixtures={fixtures} close={()=>setDetail(null)} toggle={toggle} inTeam={myIds.includes(detail.id)}/>}
+      {detail && <Detail p={detail} sq={sq} fixtures={fixtures} close={goBack} toggle={toggle} inTeam={myIds.includes(detail.id)}/>}
       {picker && <SelectSheet slot={picker} mySquad={mySquad} players={players} sq={sq} fixtures={fixtures}
-        close={()=>setPicker(null)}
-        onPick={(cand)=>{ picker.out ? swap(picker.out,cand) : toggle(cand); setPicker(null); }}
-        onRemove={()=>{ if(picker.out) toggle(picker.out); setPicker(null); }}/>}
+        close={goBack}
+        onPick={(cand)=>{ picker.out ? swap(picker.out,cand) : toggle(cand); goBack(); }}
+        onRemove={()=>{ if(picker.out) toggle(picker.out); goBack(); }}/>}
 
       <nav className="tabs">
         {[["teams","🏟️","Teams"],["players","🔎","Players"],["myteam","📋","My Team"],["coach","🧠","AI Coach"],["rules","📖","Rules"]].map(([k,ic,l])=>
-          <button key={k} className={"tab"+(tab===k?" on":"")} onClick={()=>{setTab(k);setTeam(null);}}>
+          <button key={k} className={"tab"+(tab===k?" on":"")} onClick={()=>{ setTab(k); if(team) goBack(); }}>
             <span className="ic">{ic}</span>{l}{k==="myteam"&&myIds.length>0?` (${myIds.length})`:""}
           </button>)}
       </nav>
