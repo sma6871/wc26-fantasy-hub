@@ -36,10 +36,15 @@ with the global identity.
 ├── src/app.jsx             # EDITABLE source. Edit here, then run ./build.sh
 ├── build.sh                # Compiles src/app.jsx -> index.html (esbuild + HTML template)
 ├── scripts/refresh-data.mjs# Refreshes the embedded player snapshot from FIFA feeds
+├── scripts/update-form.mjs # Bakes results-based start tiers into INTEL (run each matchday)
+├── CHANGELOG.md            # version history; app version lives in APP_VERSION (src/app.jsx)
 ├── README.md
 ├── LICENSE                 # MIT (code)
 └── CLAUDE.md               # this file
 ```
+
+`APP_VERSION` and `APP_UPDATED` in `src/app.jsx` drive the version shown in the header and footer.
+Bump both and add a `CHANGELOG.md` entry on every change.
 
 `index.html` is a build output but is committed because Vercel serves it directly with zero
 build config. The source of truth is `src/app.jsx`. After editing the source, always run
@@ -120,10 +125,18 @@ is the highest-value change.
 
 ```bash
 node scripts/refresh-data.mjs   # rewrites the SNAP constant from the live feeds
+node scripts/update-form.mjs    # rewrites INTEL start tiers from actual results (each matchday)
 ./build.sh                      # rebuild index.html
 ```
 
 Prices are fixed for the whole tournament; ownership %, squad lists and fixtures can move.
+
+The public feed exposes per-player POINTS (`stats.totalPoints`) and per-match scores plus goal/
+assist scorer lists (in `rounds.json`), but NOT per-player minutes or clean sheets. The app derives
+actual points, goals, assists, standings, and match results from these. Start probability is
+inferred from points as a minutes proxy (60+ min => >=2 appearance pts, sub-60 => 1, a goal/assist
+=> a start). `update-form.mjs` only ever raises confidence on positive evidence so curated start
+tiers are never wrongly lowered. In the live app, `buildModel` applies the same override on the fly.
 
 ## Official rules reference (keep accurate)
 

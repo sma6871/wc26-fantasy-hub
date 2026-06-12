@@ -9,6 +9,8 @@ const INTEL = {"1099":{"st":0.93,"rw":16.54},"1085":{"st":0.78,"sp":"C","rw":16.
 const TEAM_META = {"1":{"elo":1760,"prog":"R16"},"2":{"elo":2114,"prog":"TITLE"},"3":{"elo":1777,"prog":"R32"},"4":{"elo":1830,"prog":"R16"},"5":{"elo":1894,"prog":"QF"},"6":{"elo":1595,"prog":"R32"},"7":{"elo":1991,"prog":"SF"},"8":{"elo":1578,"prog":"R32"},"9":{"elo":1788,"prog":"R32"},"10":{"elo":1982,"prog":"QF"},"11":{"elo":1652,"prog":"R32"},"12":{"elo":1695,"prog":"R16"},"13":{"elo":1912,"prog":"QF"},"14":{"elo":1434,"prog":"R32"},"15":{"elo":1740,"prog":"R16"},"16":{"elo":1938,"prog":"R16"},"17":{"elo":1696,"prog":"R16"},"18":{"elo":2021,"prog":"TITLE"},"19":{"elo":2063,"prog":"TITLE"},"20":{"elo":1932,"prog":"SF"},"21":{"elo":1510,"prog":"R32"},"22":{"elo":1548,"prog":"R32"},"23":{"elo":1772,"prog":"R32"},"24":{"elo":1618,"prog":"R32"},"25":{"elo":1906,"prog":"R16"},"26":{"elo":1680,"prog":"R32"},"27":{"elo":1758,"prog":"R16"},"28":{"elo":1875,"prog":"R16"},"29":{"elo":1827,"prog":"QF"},"30":{"elo":1948,"prog":"QF"},"31":{"elo":1562,"prog":"R32"},"32":{"elo":1914,"prog":"QF"},"33":{"elo":1730,"prog":"R32"},"34":{"elo":1834,"prog":"R32"},"35":{"elo":1986,"prog":"SF"},"36":{"elo":1421,"prog":"R32"},"37":{"elo":1576,"prog":"R32"},"38":{"elo":853,"prog":"R16"},"39":{"elo":1860,"prog":"R16"},"40":{"elo":1517,"prog":"R32"},"41":{"elo":2157,"prog":"TITLE"},"42":{"elo":1712,"prog":"R16"},"43":{"elo":1891,"prog":"R16"},"44":{"elo":1628,"prog":"R32"},"45":{"elo":1911,"prog":"R16"},"46":{"elo":1892,"prog":"QF"},"47":{"elo":1726,"prog":"R16"},"48":{"elo":1714,"prog":"R32"}};
 const COACH_MODE = "off";
 const WAITLIST_URL = "https://tally.so/r/b5zb67";
+const APP_VERSION = "1.1.0";       // bump on every change; surfaced in the header + footer so changes are trackable
+const APP_UPDATED = "2026-06-12";  // last feature/content update (YYYY-MM-DD)
 const store = {
   async get(k){ try{ const v=localStorage.getItem(k); return v!=null?{value:v}:null; }catch(e){ return null; } },
   async set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
@@ -72,9 +74,54 @@ const RULES_TEXT = [
 ];
 
 /* ---------------- model ---------------- */
+// Start probability from minutes played, per the official appearance bands.
+function startProbFromMinutes(min){
+  if(min==null) return null;
+  if(min>=90) return 0.93;
+  if(min>=45) return 0.78;
+  if(min>=1)  return 0.55;
+  return 0.35;
+}
+// The public feed exposes points but not per-player minutes. Points map back to a minutes band
+// via the scoring rules: a 60+ min appearance is worth >=2 appearance pts, a sub-60 cameo exactly
+// 1, and a goal/assist confirms a start. We never infer from 0/negative pts (ambiguous: benched,
+// or played and netted out), so a curated start tier is never lowered without positive evidence.
+function minutesFromPoints(pts, scoredOrAssisted){
+  if(scoredOrAssisted) return 90;
+  if(pts==null) return null;
+  if(pts>=2) return 90;
+  if(pts>=1) return 30;
+  return null;
+}
 function buildModel(players, squads, rounds) {
   const meta = TEAM_META;
   const sq = {}; squads.forEach(s=>{ sq[s.id]={...s, ...meta[s.id]}; });
+
+  // ---- actual tournament results from the live feed (all no-ops on the offline snapshot) ----
+  // goals/assists come from each completed fixture's scorer list; per-team W/D/L and goals come
+  // from the scores; per-player actual points come straight off the feed's stats block.
+  const goalMap={}, assistMap={}, teamRes={}, teamCS={}, teamMP={};
+  const blankRow=()=>({p:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0});
+  (rounds||[]).forEach(r=>{
+    const groupStage = r.id<=3;   // standings + clean sheets are a group-stage concept here
+    (r.tournaments||[]).forEach(t=>{
+      [t.homeGoalScorersAssists, t.awayGoalScorersAssists].forEach(arr=>{
+        (arr||[]).forEach(g=>{ if(g.playerId!=null) goalMap[g.playerId]=(goalMap[g.playerId]||0)+1;
+                               if(g.assistId!=null) assistMap[g.assistId]=(assistMap[g.assistId]||0)+1; });
+      });
+      const done = t.status==="complete" && t.homeScore!=null && t.awayScore!=null;
+      if(done && groupStage){
+        [[t.homeSquadId,t.homeScore,t.awayScore],[t.awaySquadId,t.awayScore,t.homeScore]].forEach(([id,gf,ga])=>{
+          const row=teamRes[id]=teamRes[id]||blankRow();
+          row.p++; row.gf+=gf; row.ga+=ga; row.gd=row.gf-row.ga;
+          if(gf>ga){row.w++;row.pts+=3;} else if(gf===ga){row.d++;row.pts++;} else row.l++;
+          teamMP[id]=(teamMP[id]||0)+1;
+          if(ga===0) teamCS[id]=(teamCS[id]||0)+1;
+        });
+      }
+    });
+  });
+
   // group fixtures per squad from rounds 1-3
   const fixtures = {};
   rounds.slice(0,3).forEach((r,ri)=>{
@@ -111,6 +158,15 @@ function buildModel(players, squads, rounds) {
     const idx = list.indexOf(p);
     const [q,hi,lo] = startQ[p.position];
     let st = intel.st!=null? intel.st : (idx<q? hi : idx===q? 0.42 : lo);
+    // actual tournament participation signal for this player (live feed only)
+    p._actPts = p.stats && typeof p.stats.totalPoints==="number" ? p.stats.totalPoints : null;
+    p._scoredOrAssisted = !!(goalMap[p.id] || assistMap[p.id]);
+    p._actMin = p.stats && typeof p.stats.minutesPlayed==="number" ? p.stats.minutesPlayed : null; // not in the public feed today, honoured if it appears
+    // (3) auto start probability from results: override the curated/heuristic tier once we have evidence the player featured
+    const proxyMin = p._actMin!=null ? p._actMin : minutesFromPoints(p._actPts, p._scoredOrAssisted);
+    const fromResults = startProbFromMinutes(proxyMin);
+    p._startAuto = fromResults!=null;
+    if(fromResults!=null) st = fromResults;
     p._st = st;
     const sp = intel.sp||"";
     const posF = {FWD:1.3,MID:1.0,DEF:0.32,GK:0}[p.position];
@@ -159,8 +215,29 @@ function buildModel(players, squads, rounds) {
     p.txg = ptx.xgf/ptx.n;      // goals for, per group game
     p.txgc = ptx.xga/ptx.n;     // goals conceded, per group game
     p.tcs = ptx.cs/ptx.n;       // clean-sheet probability, per group game (0-1)
+    // actual tournament stats surfaced in the UI (all null/0 when offline or before kickoff)
+    p.act = p._actPts;                       // actual fantasy points scored so far (null if no feed data)
+    p.goals = goalMap[p.id]||0;
+    p.assists = assistMap[p.id]||0;
+    p.minutes = p._actMin;                   // null unless the feed exposes per-player minutes
+    p.teamCS = teamCS[p.squadId]||0;         // team clean sheets so far (per-player CS needs minutes the feed lacks)
+    p.matchesPlayed = teamMP[p.squadId]||0;  // completed group matches for the player's team
+    p.startAuto = p._startAuto;              // true when start tier was auto-derived from results
+    if(p.act!=null && p.matchesPlayed>0){
+      const expected = p.proj*p.matchesPlayed/3;   // pro-rated share of the 3-game group projection
+      p.actExpected = Math.round(expected*10)/10;
+      const d = p.act-expected;
+      p.actTone = d>=0.75? "up" : d<=-0.75? "down" : "flat";   // over/under vs pre-tournament projection
+    } else { p.actExpected=null; p.actTone=null; }
   });
-  return {sq, fixtures, teamX};
+  // group standings: group letter -> rows sorted by pts, GD, GF, then Elo as the pre-tournament tiebreak
+  const standings={};
+  Object.values(sq).forEach(t=>{
+    const row={...blankRow(), ...(teamRes[t.id]||{}), id:t.id, squad:t};
+    (standings[t.group]=standings[t.group]||[]).push(row);
+  });
+  Object.values(standings).forEach(rows=>rows.sort((a,b)=> b.pts-a.pts || b.gd-a.gd || b.gf-a.gf || b.squad.elo-a.squad.elo));
+  return {sq, fixtures, teamX, standings};
 }
 
 /* ---------------- tiny ui atoms ---------------- */
@@ -283,6 +360,21 @@ table.sc td:first-child{text-align:left;color:var(--dim)}
 .ptok.empty .ptok-card{background:rgba(255,255,255,.16)}
 .ptok.empty .pn{color:#eafff1;font-weight:600}
 .fixchip{display:inline-flex;gap:3px;align-items:center;vertical-align:middle}
+.actbadge{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:800;padding:2px 7px;border-radius:6px;background:#101113;color:#fff;font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.actbadge .arr{font-size:10px;font-weight:900;line-height:1}
+.arr-up{color:#39d98a}.arr-down{color:#ff7a7a}
+.resbadge{font-size:10px;font-weight:800;padding:1px 6px;border-radius:6px;letter-spacing:.04em}
+.res-w{background:#e7f6ec;color:#15803d}.res-d{background:#fdf3d6;color:#946b05}.res-l{background:#fdecec;color:#cf3a3f}
+table.sc tr.qual td{background:#eafaf0}
+table.sc tr.qual td:first-child{box-shadow:inset 3px 0 0 var(--pitch)}
+table.sc tr.out td:first-child{box-shadow:inset 3px 0 0 #d9d9d2}
+table.sc .tn{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:var(--ink)}
+.stbox{margin-top:12px;background:var(--panel2);border-radius:12px;padding:10px 12px}
+.stgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.stgrid .cell{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 4px;text-align:center}
+.stgrid .cell .v{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.stgrid .cell .l{font-size:9.5px;color:var(--dim);margin-top:3px}
+.verline{flex-basis:100%;text-align:center;font-size:11px;color:var(--dim);font-weight:600;font-variant-numeric:tabular-nums}
 `;
 
 function SpBadges({sp}) {
@@ -351,6 +443,9 @@ function PlayerRow({p, sq, onAdd, inTeam, onOpen, points, pointsLabel, fixtures,
       <div style={{flex:1,minWidth:0}}>
         <div className="pname" style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <span>{fullName(p)}</span><SpBadges sp={p.sp}/><StartTag v={p.start}/>
+          {p.act!=null && <span className="actbadge" title={p.actExpected!=null? `Actual ${p.act} pts vs ${p.actExpected} projected so far` : "Actual tournament points scored so far"}>
+            {p.act} pts{(p.actTone==="up"||p.actTone==="down")&&<span className={"arr arr-"+p.actTone}>{p.actTone==="up"?"▲":"▼"}</span>}
+          </span>}
         </div>
         <div className="pmeta num" style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",marginTop:2}}>
           <span>{p.position} · {sq[p.squadId].abbr} · ${p.price}m · {p.percentSelected}%</span>
@@ -476,7 +571,7 @@ function App() {
       <div className="spin"/><div className="fade" style={{fontSize:13}}>Loading squads, prices & fixtures…</div>
     </div></div>;
 
-  const {players, sq, fixtures, teamX} = data;
+  const {players, sq, fixtures, teamX, standings} = data;
   const mySquad = myIds.map(i=>players.find(p=>p.id===i)).filter(Boolean);
 
   return (
@@ -486,15 +581,15 @@ function App() {
         <div className="row" style={{justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
           <div style={{minWidth:0,flex:1}}>
             <h1 className="disp">WC26 <b>FANTASY</b> HUB</h1>
-            <div className="sub" style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Official prices ({data.live? "live" : "snapshot Jun 10"}) · 48 teams · {players.length} players · starting-XI intel</div>
+            <div className="sub" style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Official prices ({data.live? "live" : "snapshot Jun 10"}) · 48 teams · {players.length} players · v{APP_VERSION}</div>
           </div>
           <a className="hdr-coffee" href="https://buymeacoffee.com/sma6871" target="_blank" rel="noopener noreferrer" title="Support this tool">☕ <span className="hdr-coffee-txt">Support this tool</span></a>
         </div>
       </div>
 
       {tab==="teams" && (team
-        ? <TeamPage t={team} back={goBack} players={players} sq={sq} fixtures={fixtures} teamX={teamX} toggle={toggle} myIds={myIds} openP={openDetail}/>
-        : <TeamsGrid sq={sq} setTeam={openTeam} players={players}/>)}
+        ? <TeamPage t={team} back={goBack} players={players} sq={sq} fixtures={fixtures} teamX={teamX} standings={standings} toggle={toggle} myIds={myIds} openP={openDetail}/>
+        : <TeamsGrid sq={sq} setTeam={openTeam} players={players} standings={standings}/>)}
       {tab==="players" && <PlayersView players={players} sq={sq} toggle={toggle} myIds={myIds} openP={openDetail} fixtures={fixtures}/>}
       {tab==="myteam" && <MyTeam squad={mySquad} sq={sq} toggle={toggle} cap={cap} vc={vc} fixtures={fixtures}
         setCapVc={(c,v)=>{setCap(c);setVc(v);persist(myIds,c,v);}}
@@ -514,6 +609,7 @@ function App() {
           <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
           @MasFPL</a>
         <a href="https://buymeacoffee.com/sma6871" target="_blank" rel="noopener noreferrer">☕ Buy me a coffee</a>
+        <span className="verline">v{APP_VERSION} · updated {APP_UPDATED}</span>
       </footer>
 
       {detail && <Detail p={detail} sq={sq} fixtures={fixtures} close={goBack} toggle={toggle} inTeam={myIds.includes(detail.id)}/>}
@@ -533,7 +629,40 @@ function App() {
 }
 
 /* ---------------- teams ---------------- */
-function TeamsGrid({sq, setTeam, players}) {
+// completed-fixture result from a team's perspective: {g, a, res:[label, cssClass]} or null
+function fixtureResult(f){
+  const done = f && f.status==="complete" && f.score && f.score[0]!=null && f.score[1]!=null;
+  if(!done) return null;
+  const [g,a]=f.score;
+  return {g, a, res: g>a? ["W","res-w"] : g===a? ["D","res-d"] : ["L","res-l"]};
+}
+
+// Group standings table, computed from completed fixtures. Top 2 (qualify) highlighted vs bottom 2.
+function GroupTable({group, standings, sq}){
+  const rows = standings && standings[group];
+  if(!rows || !rows.length) return null;
+  const played = rows.some(r=>r.p>0);
+  return <div className="card">
+    <div className="row" style={{justifyContent:"space-between",marginBottom:8}}>
+      <div className="gl">GROUP {group.toUpperCase()} TABLE</div>
+      <div className="pmeta">{played? "live standings" : "fixtures to come"}</div>
+    </div>
+    <table className="sc">
+      <thead><tr><th style={{textAlign:"left"}}>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th></tr></thead>
+      <tbody>
+        {rows.map((r,i)=>(
+          <tr key={r.id} className={i<2?"qual":"out"}>
+            <td><span className="tn">{FLAGS[r.squad.abbr]||"⚽"} {r.squad.abbr}</span></td>
+            <td>{r.p}</td><td>{r.w}</td><td>{r.d}</td><td>{r.l}</td><td>{r.gf}</td><td>{r.ga}</td>
+            <td>{r.gd>0?"+":""}{r.gd}</td><td style={{fontWeight:800}}>{r.pts}</td>
+          </tr>))}
+      </tbody>
+    </table>
+    <div className="pmeta" style={{marginTop:7}}>● top 2 advance · ranked by points, then goal difference</div>
+  </div>;
+}
+
+function TeamsGrid({sq, setTeam, players, standings}) {
   const groups={};
   Object.values(sq).forEach(t=>{ (groups[t.group]=groups[t.group]||[]).push(t); });
   const best={};
@@ -542,6 +671,7 @@ function TeamsGrid({sq, setTeam, players}) {
     {Object.keys(groups).sort().map(g=>(
       <div key={g} style={{marginBottom:14}}>
         <div className="gl" style={{padding:"4px 16px 8px"}}>GROUP {g.toUpperCase()}</div>
+        <GroupTable group={g} standings={standings} sq={sq}/>
         <div className="grp">
           {groups[g].sort((a,b)=>b.elo-a.elo).map(t=>(
             <div key={t.id} className="tcard" onClick={()=>setTeam(t)}>
@@ -561,21 +691,24 @@ function FixtureStrip({t, sq, fixtures}) {
     <div className="gl" style={{marginBottom:8}}>GROUP FIXTURES</div>
     {fx.map((f,i)=>{
       const col = fixColor(f.diff);
+      const r = fixtureResult(f);
       return <div key={i} className="row" style={{padding:"6px 0",borderBottom:i<fx.length-1?"1px solid var(--line)":"none"}}>
         <span className="fixdot" style={{background:col}}/>
         <span style={{fontSize:16}}>{FLAGS[sq[f.opp].abbr]}</span>
         <span style={{flex:1,fontSize:14,fontWeight:600}}>{sq[f.opp].name}</span>
-        <span className="pmeta num">{fmtDate(f.date)} · {f.venue}</span>
+        {r
+          ? <><span className="num" style={{fontSize:14,fontWeight:800}}>{r.g}–{r.a}</span><span className={"resbadge "+r.res[1]}>{r.res[0]}</span></>
+          : <span className="pmeta num">{fmtDate(f.date)} · {f.venue}</span>}
       </div>;})}
     <div className="pmeta" style={{marginTop:7}}>● green = favourable matchup (Elo-based)</div>
   </div>;
 }
 
-function TeamPage({t, back, players, sq, fixtures, teamX, toggle, myIds, openP}) {
+function TeamPage({t, back, players, sq, fixtures, teamX, standings, toggle, myIds, openP}) {
   const [sort,setSort]=useState("proj");
   useEffect(()=>{ try{ window.scrollTo(0,0); }catch(e){} },[t.id]);   // open a team scrolled to the top
   const list = players.filter(p=>p.squadId===t.id)
-    .sort((a,b)=> sort==="proj"? b.proj-a.proj : sort==="start"? b.start-a.start : sort==="price"? b.price-a.price : b.percentSelected-a.percentSelected);
+    .sort((a,b)=> sort==="proj"? b.proj-a.proj : sort==="act"? (b.act??-1)-(a.act??-1) : sort==="start"? b.start-a.start : sort==="price"? b.price-a.price : b.percentSelected-a.percentSelected);
   // per-group-game projected goals from the Elo model (xG for, xG conceded, clean-sheet odds)
   const tx = teamX && teamX[t.id];
   const xgpg = tx ? tx.xgf/tx.n : null;     // projected goals for, per group game
@@ -612,9 +745,10 @@ function TeamPage({t, back, players, sq, fixtures, teamX, toggle, myIds, openP})
           {cspg}% CS</StatChip>
       </div>}
     </div>
+    <GroupTable group={t.group} standings={standings} sq={sq}/>
     <FixtureStrip t={t} sq={sq} fixtures={fixtures}/>
     <div className="pillrow">
-      {[["proj","Projected pts"],["start","Starting XI"],["price","Price"],["sel","Ownership"]].map(([k,l])=>
+      {[["proj","Projected pts"],["act","Actual pts"],["start","Starting XI"],["price","Price"],["sel","Ownership"]].map(([k,l])=>
         <button key={k} className={"chip"+(sort===k?" on":"")} onClick={()=>setSort(k)}>{l}</button>)}
     </div>
     <div className="card" style={{padding:0}}>
@@ -624,9 +758,9 @@ function TeamPage({t, back, players, sq, fixtures, teamX, toggle, myIds, openP})
 }
 
 /* ---------------- shared player filtering (Players tab + selection sheet) ---------------- */
-const SORT_OPTS=[["proj","Proj pts"],["deep","Deep-run pts"],["value","Value /$"],["start","Nailed"],["price","Price"],["sel","Owned %"],["xg","Team xG"],["xgc","Team xGC"],["cs","Clean sheet"]];
+const SORT_OPTS=[["proj","Proj pts"],["act","Actual pts"],["deep","Deep-run pts"],["value","Value /$"],["start","Nailed"],["price","Price"],["sel","Owned %"],["xg","Team xG"],["xgc","Team xGC"],["cs","Clean sheet"]];
 // all keys sorted descending (key(b)-key(a)); xGC is negated so the best (lowest) defences come first
-const SORT_KEY={proj:p=>p.proj, value:p=>p.value, price:p=>p.price, sel:p=>p.percentSelected, start:p=>p.start, deep:p=>p.tourn, xg:p=>p.txg, xgc:p=>-p.txgc, cs:p=>p.tcs};
+const SORT_KEY={proj:p=>p.proj, act:p=>(p.act??-1), value:p=>p.value, price:p=>p.price, sel:p=>p.percentSelected, start:p=>p.start, deep:p=>p.tourn, xg:p=>p.txg, xgc:p=>-p.txgc, cs:p=>p.tcs};
 const PRICE_OPTS=[["≤4.5m",4.5],["≤5.5m",5.5],["≤6.5m",6.5],["≤8m",8],["Any price",11]];
 function applyPlayerFilters(players, sq, f){
   let l=players;
@@ -661,6 +795,7 @@ function PlayerFilters({f, setF, lockPos, showGroup=true}){
 /* ---------------- players browser ---------------- */
 // right-column metric to surface for the active sort (so the value you sorted by is visible)
 function sortMetric(p, sort){
+  if(sort==="act")  return {v:(p.act!=null?p.act:"—"), l:"PTS"};
   if(sort==="deep") return {v:p.tourn, l:"PTS"};
   if(sort==="xg")   return {v:p.txg.toFixed(1), l:"xG"};
   if(sort==="xgc")  return {v:p.txgc.toFixed(1), l:"xGC"};
@@ -709,6 +844,28 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
         <span className="pmeta">fixture difficulty (Elo)</span>
       </div>
       {p.note&&<div className="note" style={{marginTop:8,fontSize:13}}>⚠ {p.note}</div>}
+      {(p.act!=null || p.matchesPlayed>0) && (
+        <div className="stbox">
+          <div className="row" style={{justifyContent:"space-between"}}>
+            <div className="gl">TOURNAMENT SO FAR</div>
+            {p.startAuto && <span className="conf exp" title="Start tier auto-derived from actual match participation">auto from results</span>}
+          </div>
+          <div className="stgrid">
+            <div className="cell"><div className="v" style={{color:"var(--pitch)"}}>{p.act!=null?p.act:"—"}</div><div className="l">Actual pts</div></div>
+            <div className="cell"><div className="v">{p.goals}</div><div className="l">Goals</div></div>
+            <div className="cell"><div className="v">{p.assists}</div><div className="l">Assists</div></div>
+            <div className="cell"><div className="v">{p.minutes!=null?p.minutes:"—"}</div><div className="l">Minutes</div></div>
+            <div className="cell"><div className="v">{(p.position==="GK"||p.position==="DEF")?p.teamCS:"—"}</div><div className="l">Clean sheets</div></div>
+            <div className="cell"><div className="v">{p.actExpected!=null?p.actExpected:"—"}</div><div className="l">Projected</div></div>
+          </div>
+          {p.actExpected!=null && <div className="pmeta" style={{marginTop:8,lineHeight:1.4}}>
+            {p.actTone==="up"? <><b style={{color:"#15803d"}}>▲ Outperforming</b> its projection</>
+             : p.actTone==="down"? <><b style={{color:"#cf3a3f"}}>▼ Underperforming</b> vs projection</>
+             : <>Tracking close to projection</>} — {p.act} actual vs {p.actExpected} projected over {p.matchesPlayed} {p.matchesPlayed===1?"match":"matches"}.
+          </div>}
+          {p.minutes==null && <div className="pmeta" style={{marginTop:6,opacity:.85,lineHeight:1.4}}>Per-player minutes aren't in the public feed, so clean sheets shown are the team's. Start tier auto-updates from match points instead.</div>}
+        </div>
+      )}
       <div style={{marginTop:12,background:"var(--panel2)",borderRadius:12,padding:"10px 12px"}}>
         <div className="gl" style={{marginBottom:7}}>PROJECTION BASIS</div>
         <div className="row" style={{justifyContent:"space-between",padding:"3px 0"}}><span className="pmeta">Team strength</span><span className="num" style={{fontSize:13,fontWeight:600}}>Elo {t.elo} · {PROG_LABEL[t.prog]}</span></div>
@@ -730,10 +887,12 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
       </div>
       <div style={{marginTop:12}}>
         <div className="gl">FIXTURES</div>
-        {fx.map((f,i)=><div key={i} className="row" style={{padding:"5px 0"}}>
+        {fx.map((f,i)=>{ const r=fixtureResult(f); return <div key={i} className="row" style={{padding:"5px 0"}}>
           <span className="fixdot" style={{background:fixColor(f.diff)}}/>
           <span style={{fontSize:14,flex:1}}>{FLAGS[sq[f.opp].abbr]} {sq[f.opp].name}</span>
-          <span className="pmeta num">{fmtDate(f.date)}</span></div>)}
+          {r
+            ? <><span className="num" style={{fontSize:14,fontWeight:800}}>{r.g}–{r.a}</span><span className={"resbadge "+r.res[1]}>{r.res[0]}</span></>
+            : <span className="pmeta num">{fmtDate(f.date)}</span>}</div>; })}
       </div>
       <button className={"btn "+(inTeam?"r":"g")} style={{width:"100%",marginTop:14}} onClick={()=>{toggle(p);close();}}>
         {inTeam?"Remove from my team":"Add to my team"}</button>
