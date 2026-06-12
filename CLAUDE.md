@@ -191,6 +191,9 @@ this repo or the public deployment.
 - Mobile-first. Test changes at a narrow viewport.
 - Writing style for docs and commit messages: concise and direct, no em dashes.
 - After any source change: `./build.sh`, sanity-check `index.html` opens, then commit both.
+- Keep `README.md` updated whenever you open a PR or add a new version/feature directly to main.
+  User-facing features belong in the README Features section; bump `APP_VERSION` and add a
+  `CHANGELOG.md` entry in the same change.
 
 ## Possible next steps
 
