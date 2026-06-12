@@ -9,7 +9,7 @@ const INTEL = {"1099":{"st":0.93,"rw":16.54},"1085":{"st":0.78,"sp":"C","rw":16.
 const TEAM_META = {"1":{"elo":1760,"prog":"R16"},"2":{"elo":2114,"prog":"TITLE"},"3":{"elo":1777,"prog":"R32"},"4":{"elo":1830,"prog":"R16"},"5":{"elo":1894,"prog":"QF"},"6":{"elo":1595,"prog":"R32"},"7":{"elo":1991,"prog":"SF"},"8":{"elo":1578,"prog":"R32"},"9":{"elo":1788,"prog":"R32"},"10":{"elo":1982,"prog":"QF"},"11":{"elo":1652,"prog":"R32"},"12":{"elo":1695,"prog":"R16"},"13":{"elo":1912,"prog":"QF"},"14":{"elo":1434,"prog":"R32"},"15":{"elo":1740,"prog":"R16"},"16":{"elo":1938,"prog":"R16"},"17":{"elo":1696,"prog":"R16"},"18":{"elo":2021,"prog":"TITLE"},"19":{"elo":2063,"prog":"TITLE"},"20":{"elo":1932,"prog":"SF"},"21":{"elo":1510,"prog":"R32"},"22":{"elo":1548,"prog":"R32"},"23":{"elo":1772,"prog":"R32"},"24":{"elo":1618,"prog":"R32"},"25":{"elo":1906,"prog":"R16"},"26":{"elo":1680,"prog":"R32"},"27":{"elo":1758,"prog":"R16"},"28":{"elo":1875,"prog":"R16"},"29":{"elo":1827,"prog":"QF"},"30":{"elo":1948,"prog":"QF"},"31":{"elo":1562,"prog":"R32"},"32":{"elo":1914,"prog":"QF"},"33":{"elo":1730,"prog":"R32"},"34":{"elo":1834,"prog":"R32"},"35":{"elo":1986,"prog":"SF"},"36":{"elo":1421,"prog":"R32"},"37":{"elo":1576,"prog":"R32"},"38":{"elo":853,"prog":"R16"},"39":{"elo":1860,"prog":"R16"},"40":{"elo":1517,"prog":"R32"},"41":{"elo":2157,"prog":"TITLE"},"42":{"elo":1712,"prog":"R16"},"43":{"elo":1891,"prog":"R16"},"44":{"elo":1628,"prog":"R32"},"45":{"elo":1911,"prog":"R16"},"46":{"elo":1892,"prog":"QF"},"47":{"elo":1726,"prog":"R16"},"48":{"elo":1714,"prog":"R32"}};
 const COACH_MODE = "off";
 const WAITLIST_URL = "https://tally.so/r/b5zb67";
-const APP_VERSION = "1.1.1";       // bump on every change; surfaced in the header + footer so changes are trackable
+const APP_VERSION = "1.1.2";       // bump on every change; surfaced in the header + footer so changes are trackable
 const APP_UPDATED = "2026-06-12";  // last feature/content update (YYYY-MM-DD)
 const store = {
   async get(k){ try{ const v=localStorage.getItem(k); return v!=null?{value:v}:null; }catch(e){ return null; } },
@@ -74,24 +74,11 @@ const RULES_TEXT = [
 ];
 
 /* ---------------- model ---------------- */
-// Start probability from minutes played, per the official appearance bands.
-function startProbFromMinutes(min){
-  if(min==null) return null;
-  if(min>=90) return 0.93;
-  if(min>=45) return 0.78;
-  if(min>=1)  return 0.55;
-  return 0.35;
-}
-// The public feed exposes points but not per-player minutes. Points map back to a minutes band
-// via the scoring rules: a 60+ min appearance is worth >=2 appearance pts, a sub-60 cameo exactly
-// 1, and a goal/assist confirms a start. We never infer from 0/negative pts (ambiguous: benched,
-// or played and netted out), so a curated start tier is never lowered without positive evidence.
-function minutesFromPoints(pts, scoredOrAssisted){
-  if(scoredOrAssisted) return 90;
-  if(pts==null) return null;
-  if(pts>=2) return 90;
-  if(pts>=1) return 30;
-  return null;
+// matchStatus -> start probability, used once a player's team has played at least one game.
+// The feed reports lineup status directly: "start" (in the XI), "sub" (came off the bench),
+// or null (in the squad but did not feature). This is more reliable than inferring from points.
+function startProbFromMatchStatus(matchStatus){
+  return matchStatus==="start"? 0.93 : matchStatus==="sub"? 0.55 : 0.35;
 }
 function buildModel(players, squads, rounds) {
   const meta = TEAM_META;
@@ -158,15 +145,19 @@ function buildModel(players, squads, rounds) {
     const idx = list.indexOf(p);
     const [q,hi,lo] = startQ[p.position];
     let st = intel.st!=null? intel.st : (idx<q? hi : idx===q? 0.42 : lo);
-    // actual tournament participation signal for this player (live feed only)
+    // actual tournament data for this player (live feed only)
     p._actPts = p.stats && typeof p.stats.totalPoints==="number" ? p.stats.totalPoints : null;
     p._scoredOrAssisted = !!(goalMap[p.id] || assistMap[p.id]);
-    p._actMin = p.stats && typeof p.stats.minutesPlayed==="number" ? p.stats.minutesPlayed : null; // not in the public feed today, honoured if it appears
-    // (3) auto start probability from results: override the curated/heuristic tier once we have evidence the player featured
-    const proxyMin = p._actMin!=null ? p._actMin : minutesFromPoints(p._actPts, p._scoredOrAssisted);
-    const fromResults = startProbFromMinutes(proxyMin);
-    p._startAuto = fromResults!=null;
-    if(fromResults!=null) st = fromResults;
+    const teamPlayed = (teamMP[p.squadId]||0) > 0;
+    const ms = p.matchStatus || null;   // "start" | "sub" | null, from the live feed
+    // matchday lineup badge + minutes/participation display, only once the team has played
+    p.matchBadge = teamPlayed
+      ? (ms==="start"? {label:"STARTED",color:"green"} : ms==="sub"? {label:"SUB",color:"amber"} : {label:"BENCH",color:"red"})
+      : null;
+    p.minsDisplay = teamPlayed ? (ms==="start"? "Started" : ms==="sub"? "Sub" : "DNP") : "";
+    // (4) auto start probability from matchStatus, but only for players whose team has already played
+    p._startAuto = teamPlayed;
+    if(teamPlayed) st = startProbFromMatchStatus(ms);
     p._st = st;
     const sp = intel.sp||"";
     const posF = {FWD:1.3,MID:1.0,DEF:0.32,GK:0}[p.position];
@@ -219,7 +210,6 @@ function buildModel(players, squads, rounds) {
     p.act = p._actPts;                       // actual fantasy points scored so far (null if no feed data)
     p.goals = goalMap[p.id]||0;
     p.assists = assistMap[p.id]||0;
-    p.minutes = p._actMin;                   // null unless the feed exposes per-player minutes
     p.teamCS = teamCS[p.squadId]||0;         // team clean sheets so far (per-player CS needs minutes the feed lacks)
     p.matchesPlayed = teamMP[p.squadId]||0;  // completed group matches for the player's team
     p.startAuto = p._startAuto;              // true when start tier was auto-derived from results
@@ -368,6 +358,9 @@ table.sc td:first-child{text-align:left;color:var(--dim)}
 .actbadge{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:800;padding:2px 7px;border-radius:6px;background:#101113;color:#fff;font-variant-numeric:tabular-nums;letter-spacing:.01em}
 .actbadge .arr{font-size:10px;font-weight:900;line-height:1}
 .arr-up{color:#39d98a}.arr-down{color:#ff7a7a}
+.mbadge{font-size:10px;font-weight:800;padding:2px 6px;border-radius:6px;letter-spacing:.04em;white-space:nowrap}
+.mb-green{background:#e7f6ec;color:#15803d}.mb-amber{background:#fff3e4;color:#c2640a}.mb-red{background:#fdecec;color:#cf3a3f}
+.minsd{font-size:11px;color:var(--dim);font-weight:600}
 .resbadge{font-size:10px;font-weight:800;padding:1px 6px;border-radius:6px;letter-spacing:.04em}
 .res-w{background:#e7f6ec;color:#15803d}.res-d{background:#fdf3d6;color:#946b05}.res-l{background:#fdecec;color:#cf3a3f}
 table.sc tr.qual td{background:#eafaf0}
@@ -447,13 +440,16 @@ function PlayerRow({p, sq, onAdd, inTeam, onOpen, points, pointsLabel, fixtures,
       <div style={{width:30,textAlign:"center",fontSize:19,flexShrink:0}}>{FLAGS[sq[p.squadId].abbr]||"⚽"}</div>
       <div style={{flex:1,minWidth:0}}>
         <div className="pname" style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-          <span>{fullName(p)}</span><SpBadges sp={p.sp}/><StartTag v={p.start}/>
+          <span>{fullName(p)}</span>
+          {p.matchBadge && <span className={"mbadge mb-"+p.matchBadge.color} title="Lineup status in the latest match">{p.matchBadge.label}</span>}
+          <SpBadges sp={p.sp}/><StartTag v={p.start}/>
           {p.act!=null && <span className="actbadge" title={p.actExpected!=null? `Actual ${p.act} pts vs ${p.actExpected} projected so far` : "Actual tournament points scored so far"}>
             {p.act} pts{(p.actTone==="up"||p.actTone==="down")&&<span className={"arr arr-"+p.actTone}>{p.actTone==="up"?"▲":"▼"}</span>}
           </span>}
         </div>
         <div className="pmeta num" style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",marginTop:2}}>
           <span>{p.position} · {sq[p.squadId].abbr} · ${p.price}m · {p.percentSelected}%</span>
+          {p.minsDisplay && <span className="minsd">· {p.minsDisplay}</span>}
           <FixtureDots squadId={p.squadId} fixtures={fixtures} sq={sq}/>
           {nd && <span style={{color:"var(--pitch)",fontWeight:700}}>{nd}</span>}
           <ConfidenceTag c={p.confidence}/>
@@ -850,7 +846,7 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
       <div className="row">
         <span style={{fontSize:30}}>{FLAGS[t.abbr]}</span>
         <div style={{flex:1}}>
-          <div className="disp" style={{fontSize:20,fontWeight:700}}>{fullName(p)} <SpBadges sp={p.sp}/></div>
+          <div className="disp" style={{fontSize:20,fontWeight:700,display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>{fullName(p)} <SpBadges sp={p.sp}/>{p.matchBadge && <span className={"mbadge mb-"+p.matchBadge.color} title="Lineup status in the latest match">{p.matchBadge.label}</span>}</div>
           <div className="pmeta num" style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>{p.position} · {t.name} · Group {t.group.toUpperCase()} <ConfidenceTag c={p.confidence}/></div>
         </div>
         <button className="btn ghost" onClick={close}>✕</button>
@@ -877,7 +873,7 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
             <div className="cell"><div className="v" style={{color:"var(--pitch)"}}>{p.act!=null?p.act:"—"}</div><div className="l">Actual pts</div></div>
             <div className="cell"><div className="v">{p.goals}</div><div className="l">Goals</div></div>
             <div className="cell"><div className="v">{p.assists}</div><div className="l">Assists</div></div>
-            <div className="cell"><div className="v">{p.minutes!=null?p.minutes:"—"}</div><div className="l">Minutes</div></div>
+            <div className="cell"><div className="v" style={{fontSize:p.minsDisplay?14:17}}>{p.minsDisplay||"—"}</div><div className="l">Played</div></div>
             <div className="cell"><div className="v">{(p.position==="GK"||p.position==="DEF")?p.teamCS:"—"}</div><div className="l">Clean sheets</div></div>
             <div className="cell"><div className="v">{p.actExpected!=null?p.actExpected:"—"}</div><div className="l">Projected</div></div>
           </div>
@@ -886,7 +882,7 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
              : p.actTone==="down"? <><b style={{color:"#cf3a3f"}}>▼ Underperforming</b> vs projection</>
              : <>Tracking close to projection</>} — {p.act} actual vs {p.actExpected} projected over {p.matchesPlayed} {p.matchesPlayed===1?"match":"matches"}.
           </div>}
-          {p.minutes==null && <div className="pmeta" style={{marginTop:6,opacity:.85,lineHeight:1.4}}>Per-player minutes aren't in the public feed, so clean sheets shown are the team's. Start tier auto-updates from match points instead.</div>}
+          <div className="pmeta" style={{marginTop:6,opacity:.85,lineHeight:1.4}}>"Played" is the feed's lineup status (started / sub / did not play); exact minutes and per-player clean sheets aren't published, so clean sheets shown are the team's. Start tier auto-updates from lineup status.</div>
         </div>
       )}
       <div style={{marginTop:12,background:"var(--panel2)",borderRadius:12,padding:"10px 12px"}}>

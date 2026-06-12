@@ -14,7 +14,8 @@ lineup/fitness research.
 
 Once the tournament is underway it also tracks actual performance: live points scored
 (with an over/under arrow versus projection), goals and assists, group standings tables,
-and match results with W/D/L badges. Start probabilities auto-update from results.
+match results with W/D/L badges, and matchday lineup status (started / sub) per player.
+Start probabilities auto-update from the official lineups.
 
 ## Features
 - All 48 teams with Elo strength, projected goals and clean-sheet odds.

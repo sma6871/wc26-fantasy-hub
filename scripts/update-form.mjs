@@ -6,18 +6,14 @@
 // Usage: node scripts/update-form.mjs
 //
 // How start tiers are inferred:
-//   The public FIFA feed exposes per-player POINTS but not per-player MINUTES. Points map back
-//   to a minutes band via the official scoring rules: a 60+ min appearance is worth >=2 appearance
-//   points, a sub-60 cameo exactly 1, and any goal/assist confirms a start. So:
-//     scored or assisted        -> 90 min equivalent -> st 0.93
-//     >=2 points in the feed     -> 60+ min            -> st 0.93
-//     exactly 1 point            -> sub-60 cameo       -> st 0.55
-//     0 / negative points        -> ambiguous (benched, or played and netted out) -> no change
-//   If the feed ever exposes real minutes (stats.minutesPlayed), those are used directly instead.
-//
-// Only EVIDENCE-POSITIVE updates are applied: a curated start tier is never lowered just because a
-// player has no data yet, so the hand-curated edge is preserved. New players with evidence but no
-// existing INTEL entry are appended.
+//   The feed reports each player's lineup status directly via matchStatus, so once a player's
+//   team has played at least one game we trust it:
+//     matchStatus "start"  -> st 0.93
+//     matchStatus "sub"    -> st 0.55
+//     matchStatus null     -> st 0.35  (in the squad but did not feature)
+//   Players whose team has NOT played yet are left untouched, so the hand-curated edge for
+//   upcoming fixtures is preserved. This mirrors the override in buildModel exactly.
+//   New players with evidence but no existing INTEL entry are appended.
 import { readFileSync, writeFileSync } from "node:fs";
 
 const BASE = "https://play.fifa.com/json/fantasy";
@@ -25,32 +21,24 @@ const j = async (f) => (await fetch(`${BASE}/${f}.json`)).json();
 
 const [players, , rounds] = await Promise.all([j("players"), j("squads"), j("rounds")]);
 
-// goals/assists confirm a start
-const scoredOrAssisted = new Set();
+// squads that have completed at least one match (group stage)
+const playedTeams = new Set();
 for (const r of rounds) {
   for (const t of r.tournaments || []) {
-    for (const arr of [t.homeGoalScorersAssists, t.awayGoalScorersAssists]) {
-      for (const g of arr || []) {
-        if (g.playerId != null) scoredOrAssisted.add(g.playerId);
-        if (g.assistId != null) scoredOrAssisted.add(g.assistId);
-      }
+    if (t.status === "complete" && t.homeScore != null && t.awayScore != null) {
+      playedTeams.add(t.homeSquadId);
+      playedTeams.add(t.awaySquadId);
     }
   }
 }
 
-const startProbFromMinutes = (min) =>
-  min == null ? null : min >= 90 ? 0.93 : min >= 45 ? 0.78 : min >= 1 ? 0.55 : 0.35;
-const minutesFromPoints = (pts, sa) =>
-  sa ? 90 : pts == null ? null : pts >= 2 ? 90 : pts >= 1 ? 30 : null;
+const startProbFromMatchStatus = (ms) => (ms === "start" ? 0.93 : ms === "sub" ? 0.55 : 0.35);
 
 const updates = new Map(); // id -> st
 for (const p of players) {
   if (p.status !== "playing") continue;
-  const pts = p.stats && typeof p.stats.totalPoints === "number" ? p.stats.totalPoints : null;
-  const realMin = p.stats && typeof p.stats.minutesPlayed === "number" ? p.stats.minutesPlayed : null;
-  const min = realMin != null ? realMin : minutesFromPoints(pts, scoredOrAssisted.has(p.id));
-  const st = startProbFromMinutes(min);
-  if (st != null) updates.set(p.id, st); // evidence-positive only
+  if (!playedTeams.has(p.squadId)) continue; // don't touch teams that haven't played yet
+  updates.set(p.id, startProbFromMatchStatus(p.matchStatus || null));
 }
 
 const path = new URL("../src/app.jsx", import.meta.url);
@@ -77,5 +65,5 @@ if (toAppend.length) {
 }
 
 writeFileSync(path, src);
-console.log(`update-form: ${updated} start tiers updated, ${toAppend.length} added (from ${updates.size} players with match evidence).`);
+console.log(`update-form: ${updated} start tiers updated, ${toAppend.length} added (from ${updates.size} players on teams that have played).`);
 console.log("Now run ./build.sh to regenerate index.html.");

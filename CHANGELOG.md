@@ -3,6 +3,22 @@
 Versioning so changes are trackable. The current version shows in the app header and footer
 (`APP_VERSION` / `APP_UPDATED` in `src/app.jsx`). Bump both on every change.
 
+## 1.1.2 - 2026-06-12
+
+Matchday lineup status from the feed's matchStatus field.
+
+- Each player now carries a matchday badge derived from matchStatus: STARTED (green),
+  SUB (amber), or BENCH (red, for a squad player left out once their team has played).
+  Shown on player rows and in the detail sheet.
+- A subtle "played" label (Started / Sub / DNP) on player rows, plus a "Played" stat in
+  the detail sheet alongside goals and assists.
+- Start probability now auto-updates from matchStatus once a team has played: start -> 0.93,
+  sub -> 0.55, otherwise 0.35. Teams that have not played yet keep their curated tier.
+- update-form.mjs uses the same matchStatus logic so the matchday script stays in sync.
+
+Note: the feed marks every non-starting squad member as "sub" (named substitute), so the
+red BENCH state (matchStatus null on a team that has played) does not occur in practice.
+
 ## 1.1.1 - 2026-06-12
 
 UX refinements from preview feedback.

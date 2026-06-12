@@ -131,12 +131,14 @@ node scripts/update-form.mjs    # rewrites INTEL start tiers from actual results
 
 Prices are fixed for the whole tournament; ownership %, squad lists and fixtures can move.
 
-The public feed exposes per-player POINTS (`stats.totalPoints`) and per-match scores plus goal/
-assist scorer lists (in `rounds.json`), but NOT per-player minutes or clean sheets. The app derives
-actual points, goals, assists, standings, and match results from these. Start probability is
-inferred from points as a minutes proxy (60+ min => >=2 appearance pts, sub-60 => 1, a goal/assist
-=> a start). `update-form.mjs` only ever raises confidence on positive evidence so curated start
-tiers are never wrongly lowered. In the live app, `buildModel` applies the same override on the fly.
+The public feed exposes per-player POINTS (`stats.totalPoints`), lineup status (`matchStatus`:
+"start", "sub", or null), and per-match scores plus goal/assist scorer lists (in `rounds.json`),
+but NOT per-player minutes or clean sheets. The app derives actual points, goals, assists,
+standings, match results, and a matchday badge from these. Start probability auto-updates from
+`matchStatus` once a team has played: start => 0.93, sub => 0.55, else 0.35; teams that have not
+played keep their curated tier. `update-form.mjs` uses the identical logic so the matchday script
+matches `buildModel`. Note: the feed tags every non-starting squad member as "sub" (a named
+substitute), so the null-on-a-played-team case (red BENCH badge) does not occur in practice.
 
 ## Official rules reference (keep accurate)
 
