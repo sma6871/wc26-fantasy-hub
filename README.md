@@ -18,8 +18,8 @@ and match results with W/D/L badges. Start probabilities auto-update from result
 
 ## Features
 - All 48 teams with Elo strength, projected goals and clean-sheet odds.
-- Player browser with search, filters and sorting by projected or actual points, value,
-  start likelihood, price, ownership and team metrics.
+- Player browser with search, filters (position, group, price, projection confidence) and
+  sorting by actual or projected points, value, start likelihood, price, ownership and team metrics.
 - Group standings (P, W, D, L, GF, GA, GD, Pts) computed from fixture results.
 - Squad builder enforcing the official rules, with captain/vice and budget validation.
 - Player detail sheet with projection basis and live tournament stats.

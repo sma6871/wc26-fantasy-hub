@@ -3,6 +3,18 @@
 Versioning so changes are trackable. The current version shows in the app header and footer
 (`APP_VERSION` / `APP_UPDATED` in `src/app.jsx`). Bump both on every change.
 
+## 1.1.1 - 2026-06-12
+
+UX refinements from preview feedback.
+
+- Players tab now defaults to the "Actual pts" sort, moved to the first chip.
+- Renamed the "Deep-run pts" sort to "Tournament pts" and added a tooltip to every sort chip
+  explaining what it ranks.
+- Added a Confidence filter (All / Expert / Model) to the Players filter bar.
+- Slimmed down the Teams page: denser standings tables (scoped so the Rules table is untouched),
+  more compact team cards with short progression codes, tighter grid, and standings rows are now
+  clickable to open a team.
+
 ## 1.1.0 - 2026-06-12
 
 Live results and actual-performance tracking, all surfaced in the existing tabs (no new tabs).

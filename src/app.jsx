@@ -9,7 +9,7 @@ const INTEL = {"1099":{"st":0.93,"rw":16.54},"1085":{"st":0.78,"sp":"C","rw":16.
 const TEAM_META = {"1":{"elo":1760,"prog":"R16"},"2":{"elo":2114,"prog":"TITLE"},"3":{"elo":1777,"prog":"R32"},"4":{"elo":1830,"prog":"R16"},"5":{"elo":1894,"prog":"QF"},"6":{"elo":1595,"prog":"R32"},"7":{"elo":1991,"prog":"SF"},"8":{"elo":1578,"prog":"R32"},"9":{"elo":1788,"prog":"R32"},"10":{"elo":1982,"prog":"QF"},"11":{"elo":1652,"prog":"R32"},"12":{"elo":1695,"prog":"R16"},"13":{"elo":1912,"prog":"QF"},"14":{"elo":1434,"prog":"R32"},"15":{"elo":1740,"prog":"R16"},"16":{"elo":1938,"prog":"R16"},"17":{"elo":1696,"prog":"R16"},"18":{"elo":2021,"prog":"TITLE"},"19":{"elo":2063,"prog":"TITLE"},"20":{"elo":1932,"prog":"SF"},"21":{"elo":1510,"prog":"R32"},"22":{"elo":1548,"prog":"R32"},"23":{"elo":1772,"prog":"R32"},"24":{"elo":1618,"prog":"R32"},"25":{"elo":1906,"prog":"R16"},"26":{"elo":1680,"prog":"R32"},"27":{"elo":1758,"prog":"R16"},"28":{"elo":1875,"prog":"R16"},"29":{"elo":1827,"prog":"QF"},"30":{"elo":1948,"prog":"QF"},"31":{"elo":1562,"prog":"R32"},"32":{"elo":1914,"prog":"QF"},"33":{"elo":1730,"prog":"R32"},"34":{"elo":1834,"prog":"R32"},"35":{"elo":1986,"prog":"SF"},"36":{"elo":1421,"prog":"R32"},"37":{"elo":1576,"prog":"R32"},"38":{"elo":853,"prog":"R16"},"39":{"elo":1860,"prog":"R16"},"40":{"elo":1517,"prog":"R32"},"41":{"elo":2157,"prog":"TITLE"},"42":{"elo":1712,"prog":"R16"},"43":{"elo":1891,"prog":"R16"},"44":{"elo":1628,"prog":"R32"},"45":{"elo":1911,"prog":"R16"},"46":{"elo":1892,"prog":"QF"},"47":{"elo":1726,"prog":"R16"},"48":{"elo":1714,"prog":"R32"}};
 const COACH_MODE = "off";
 const WAITLIST_URL = "https://tally.so/r/b5zb67";
-const APP_VERSION = "1.1.0";       // bump on every change; surfaced in the header + footer so changes are trackable
+const APP_VERSION = "1.1.1";       // bump on every change; surfaced in the header + footer so changes are trackable
 const APP_UPDATED = "2026-06-12";  // last feature/content update (YYYY-MM-DD)
 const store = {
   async get(k){ try{ const v=localStorage.getItem(k); return v!=null?{value:v}:null; }catch(e){ return null; } },
@@ -291,10 +291,15 @@ input:focus{border-color:var(--pitch)}
 table.sc{width:100%;border-collapse:collapse;font-size:13px}
 table.sc td,table.sc th{padding:7px 6px;border-bottom:1px solid var(--line);text-align:center}
 table.sc td:first-child{text-align:left;color:var(--dim)}
-.grp{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 12px}
+.grp{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 12px}
 /* groups have exactly 4 teams: 2 cols on mobile (2+2), 4 cols on desktop (one tidy row) - avoids the lopsided 3+1 */
-@media(min-width:760px){.grp{grid-template-columns:repeat(4,1fr);gap:12px}.app{max-width:1120px;margin:0 auto}}
-.tcard{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:11px;cursor:pointer;box-shadow:0 1px 2px rgba(20,20,15,.04);transition:transform .12s ease,box-shadow .12s ease,border-color .12s ease}
+@media(min-width:760px){.grp{grid-template-columns:repeat(4,1fr);gap:10px}.app{max-width:1120px;margin:0 auto}}
+.tcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:9px 10px;cursor:pointer;box-shadow:0 1px 2px rgba(20,20,15,.04);transition:transform .12s ease,box-shadow .12s ease,border-color .12s ease}
+/* dense standings table (scoped so the Rules scoring table is untouched) */
+.gtbl-card{padding:11px 12px}
+.sc.gtbl td,.sc.gtbl th{padding:3px 5px;font-size:12px}
+.sc.gtbl .tn{gap:5px}
+@media(hover:hover){.sc.gtbl tbody tr.out:hover td{background:#f1f3f6}}
 @media(hover:hover){.tcard:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(20,20,15,.10);border-color:#d7e9dc}}
 .gl{font-weight:700;color:var(--dim);font-size:11px;letter-spacing:.1em}
 .spin{display:inline-block;width:18px;height:18px;border:2px solid var(--line);border-top-color:var(--pitch);border-radius:50%;animation:sp 1s linear infinite}
@@ -588,7 +593,7 @@ function App() {
       </div>
 
       {tab==="teams" && (team
-        ? <TeamPage t={team} back={goBack} players={players} sq={sq} fixtures={fixtures} teamX={teamX} standings={standings} toggle={toggle} myIds={myIds} openP={openDetail}/>
+        ? <TeamPage t={team} back={goBack} players={players} sq={sq} fixtures={fixtures} teamX={teamX} standings={standings} setTeam={openTeam} toggle={toggle} myIds={myIds} openP={openDetail}/>
         : <TeamsGrid sq={sq} setTeam={openTeam} players={players} standings={standings}/>)}
       {tab==="players" && <PlayersView players={players} sq={sq} toggle={toggle} myIds={myIds} openP={openDetail} fixtures={fixtures}/>}
       {tab==="myteam" && <MyTeam squad={mySquad} sq={sq} toggle={toggle} cap={cap} vc={vc} fixtures={fixtures}
@@ -638,27 +643,27 @@ function fixtureResult(f){
 }
 
 // Group standings table, computed from completed fixtures. Top 2 (qualify) highlighted vs bottom 2.
-function GroupTable({group, standings, sq}){
+function GroupTable({group, standings, sq, setTeam}){
   const rows = standings && standings[group];
   if(!rows || !rows.length) return null;
   const played = rows.some(r=>r.p>0);
-  return <div className="card">
-    <div className="row" style={{justifyContent:"space-between",marginBottom:8}}>
-      <div className="gl">GROUP {group.toUpperCase()} TABLE</div>
-      <div className="pmeta">{played? "live standings" : "fixtures to come"}</div>
+  return <div className="card gtbl-card">
+    <div className="row" style={{justifyContent:"space-between",marginBottom:6}}>
+      <div className="gl">STANDINGS</div>
+      <div className="pmeta">{played? "live" : "fixtures to come"}</div>
     </div>
-    <table className="sc">
+    <table className="sc gtbl">
       <thead><tr><th style={{textAlign:"left"}}>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th></tr></thead>
       <tbody>
         {rows.map((r,i)=>(
-          <tr key={r.id} className={i<2?"qual":"out"}>
+          <tr key={r.id} className={i<2?"qual":"out"} onClick={setTeam?()=>setTeam(r.squad):undefined} style={setTeam?{cursor:"pointer"}:null}>
             <td><span className="tn">{FLAGS[r.squad.abbr]||"⚽"} {r.squad.abbr}</span></td>
             <td>{r.p}</td><td>{r.w}</td><td>{r.d}</td><td>{r.l}</td><td>{r.gf}</td><td>{r.ga}</td>
             <td>{r.gd>0?"+":""}{r.gd}</td><td style={{fontWeight:800}}>{r.pts}</td>
           </tr>))}
       </tbody>
     </table>
-    <div className="pmeta" style={{marginTop:7}}>● top 2 advance · ranked by points, then goal difference</div>
+    <div className="pmeta" style={{marginTop:6,fontSize:10.5}}>● top 2 advance · by points, then GD</div>
   </div>;
 }
 
@@ -669,16 +674,16 @@ function TeamsGrid({sq, setTeam, players, standings}) {
   players.forEach(p=>{ if(!best[p.squadId]||p.proj>best[p.squadId].proj) best[p.squadId]=p; });
   return <>
     {Object.keys(groups).sort().map(g=>(
-      <div key={g} style={{marginBottom:14}}>
-        <div className="gl" style={{padding:"4px 16px 8px"}}>GROUP {g.toUpperCase()}</div>
-        <GroupTable group={g} standings={standings} sq={sq}/>
+      <div key={g} style={{marginBottom:16}}>
+        <div className="gl" style={{padding:"4px 16px 6px"}}>GROUP {g.toUpperCase()}</div>
+        <GroupTable group={g} standings={standings} sq={sq} setTeam={setTeam}/>
         <div className="grp">
           {groups[g].sort((a,b)=>b.elo-a.elo).map(t=>(
             <div key={t.id} className="tcard" onClick={()=>setTeam(t)}>
-              <div className="row"><span style={{fontSize:24}}>{FLAGS[t.abbr]||"⚽"}</span>
-                <div><div className="pname disp" style={{fontSize:16}}>{t.name}</div>
-                <div className="pmeta num">Elo {t.elo} · {PROG_LABEL[t.prog]}</div></div></div>
-              {best[t.id]&&<div className="pmeta" style={{marginTop:7}}>★ {fullName(best[t.id])} <span className="num" style={{color:"var(--pitch)"}}>{best[t.id].proj}</span></div>}
+              <div className="row" style={{gap:8}}><span style={{fontSize:20}}>{FLAGS[t.abbr]||"⚽"}</span>
+                <div style={{minWidth:0}}><div className="pname disp" style={{fontSize:14.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.name}</div>
+                <div className="pmeta num" title={PROG_LABEL[t.prog]}>Elo {t.elo} · {t.prog}</div></div></div>
+              {best[t.id]&&<div className="pmeta" style={{marginTop:5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>★ {fullName(best[t.id])} <span className="num" style={{color:"var(--pitch)"}}>{best[t.id].proj}</span></div>}
             </div>))}
         </div>
       </div>))}
@@ -704,7 +709,7 @@ function FixtureStrip({t, sq, fixtures}) {
   </div>;
 }
 
-function TeamPage({t, back, players, sq, fixtures, teamX, standings, toggle, myIds, openP}) {
+function TeamPage({t, back, players, sq, fixtures, teamX, standings, setTeam, toggle, myIds, openP}) {
   const [sort,setSort]=useState("proj");
   useEffect(()=>{ try{ window.scrollTo(0,0); }catch(e){} },[t.id]);   // open a team scrolled to the top
   const list = players.filter(p=>p.squadId===t.id)
@@ -745,7 +750,7 @@ function TeamPage({t, back, players, sq, fixtures, teamX, standings, toggle, myI
           {cspg}% CS</StatChip>
       </div>}
     </div>
-    <GroupTable group={t.group} standings={standings} sq={sq}/>
+    <GroupTable group={t.group} standings={standings} sq={sq} setTeam={setTeam}/>
     <FixtureStrip t={t} sq={sq} fixtures={fixtures}/>
     <div className="pillrow">
       {[["proj","Projected pts"],["act","Actual pts"],["start","Starting XI"],["price","Price"],["sel","Ownership"]].map(([k,l])=>
@@ -758,14 +763,29 @@ function TeamPage({t, back, players, sq, fixtures, teamX, standings, toggle, myI
 }
 
 /* ---------------- shared player filtering (Players tab + selection sheet) ---------------- */
-const SORT_OPTS=[["proj","Proj pts"],["act","Actual pts"],["deep","Deep-run pts"],["value","Value /$"],["start","Nailed"],["price","Price"],["sel","Owned %"],["xg","Team xG"],["xgc","Team xGC"],["cs","Clean sheet"]];
+// [key, label, tooltip] — tooltip explains each sort so the labels are self-documenting
+const SORT_OPTS=[
+  ["act","Actual pts","Actual fantasy points scored so far this tournament"],
+  ["proj","Proj pts","Projected points across the 3 group games"],
+  ["deep","Tournament pts","Projected points across the whole tournament: the group projection scaled by how far the team is expected to advance (deep-run value)"],
+  ["value","Value /$","Projected points per $1m of price"],
+  ["start","Nailed","Likelihood of starting — higher is more nailed-on"],
+  ["price","Price","Player price"],
+  ["sel","Owned %","Share of all teams that own this player"],
+  ["xg","Team xG","Team's projected goals scored per group game"],
+  ["xgc","Team xGC","Team's projected goals conceded per group game (lower is better)"],
+  ["cs","Clean sheet","Team clean-sheet probability per group game"],
+];
 // all keys sorted descending (key(b)-key(a)); xGC is negated so the best (lowest) defences come first
 const SORT_KEY={proj:p=>p.proj, act:p=>(p.act??-1), value:p=>p.value, price:p=>p.price, sel:p=>p.percentSelected, start:p=>p.start, deep:p=>p.tourn, xg:p=>p.txg, xgc:p=>-p.txgc, cs:p=>p.tcs};
 const PRICE_OPTS=[["≤4.5m",4.5],["≤5.5m",5.5],["≤6.5m",6.5],["≤8m",8],["Any price",11]];
+// confidence in a player's projection: expert-backed (blends a RotoWire value) vs model-only
+const CONF_OPTS=[["ALL","All"],["expert","Expert"],["model","Model"]];
 function applyPlayerFilters(players, sq, f){
   let l=players;
   if(f.pos && f.pos!=="ALL") l=l.filter(p=>p.position===f.pos);
   if(f.grp && f.grp!=="ALL") l=l.filter(p=>sq[p.squadId].group===f.grp);
+  if(f.conf && f.conf!=="ALL") l=l.filter(p=>p.confidence===f.conf);
   if(f.maxP<11) l=l.filter(p=>p.price<=f.maxP);
   if(f.q){ const n=f.q.toLowerCase(); l=l.filter(p=> fullName(p).toLowerCase().includes(n) || sq[p.squadId].name.toLowerCase().includes(n)); }
   const key=SORT_KEY[f.sort]||SORT_KEY.proj;
@@ -784,10 +804,13 @@ function PlayerFilters({f, setF, lockPos, showGroup=true}){
     <div className="pillrow">
       {!lockPos && ["ALL","GK","DEF","MID","FWD"].map(p=><button key={p} className={"chip"+(f.pos===p?" on":"")} onClick={()=>set({pos:p})}>{p}</button>)}
       {!lockPos && <span style={{width:6}}/>}
-      {SORT_OPTS.map(([k,l])=><button key={k} className={"chip"+(f.sort===k?" on":"")} onClick={()=>set({sort:k})}>{l}</button>)}
+      {SORT_OPTS.map(([k,l,tip])=><button key={k} title={tip} className={"chip"+(f.sort===k?" on":"")} onClick={()=>set({sort:k})}>{l}</button>)}
     </div>
     <div className="pillrow" style={{paddingTop:0}}>
       {PRICE_OPTS.map(([l,v])=><button key={l} className={"chip"+(f.maxP===v?" on":"")} onClick={()=>set({maxP:v})}>{l}</button>)}
+      <span style={{width:6}}/>
+      <span className="chip" style={{borderStyle:"dashed",cursor:"default",color:"var(--dim)"}} title="Filter by projection confidence">Conf</span>
+      {CONF_OPTS.map(([k,l])=><button key={k} title={k==="expert"?"Only players with an expert-backed projection":k==="model"?"Only model-estimate players (no expert projection)":"All players"} className={"chip"+(((f.conf||"ALL")===k)?" on":"")} onClick={()=>set({conf:k})}>{l}</button>)}
     </div>
   </>;
 }
@@ -803,7 +826,7 @@ function sortMetric(p, sort){
   return null;
 }
 function PlayersView({players, sq, toggle, myIds, openP, fixtures}) {
-  const [f,setF]=useState({q:"",pos:"ALL",grp:"ALL",maxP:11,sort:"proj"});
+  const [f,setF]=useState({q:"",pos:"ALL",grp:"ALL",maxP:11,sort:"act",conf:"ALL"});
   const [cnt,setCnt]=useState(60);
   const list = useMemo(()=>applyPlayerFilters(players,sq,f),[players,sq,f]);
   return <>
@@ -833,7 +856,7 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
         <button className="btn ghost" onClick={close}>✕</button>
       </div>
       <div className="row" style={{marginTop:14,gap:8}}>
-        {[["$"+p.price+"m","Price"],[p.proj,"Proj (3 GMs)"],[p.tourn,"Deep-run"],[startTier(p.start).label,"Start XI"],[p.percentSelected+"%","Owned"]].map(([v,l])=>
+        {[["$"+p.price+"m","Price"],[p.proj,"Proj (3 GMs)"],[p.tourn,"Tournament"],[startTier(p.start).label,"Start XI"],[p.percentSelected+"%","Owned"]].map(([v,l])=>
           <div key={l} style={{flex:1,background:"var(--panel2)",borderRadius:10,padding:"9px 4px",textAlign:"center"}}>
             <div className="bigpt num" style={{fontSize:17}}>{v}</div><div style={{fontSize:9.5,color:"var(--dim)"}}>{l}</div></div>)}
       </div>
