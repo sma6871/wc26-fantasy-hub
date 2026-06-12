@@ -12,6 +12,19 @@ Live player prices, ownership and fixtures are fetched from public feeds at runt
 projections combine expert group-stage models, World Football Elo ratings and curated
 lineup/fitness research.
 
+Once the tournament is underway it also tracks actual performance: live points scored
+(with an over/under arrow versus projection), goals and assists, group standings tables,
+match results with W/D/L badges, and matchday lineup status (started / sub) per player.
+Start probabilities auto-update from the official lineups.
+
+## Features
+- All 48 teams with Elo strength, projected goals and clean-sheet odds.
+- Player browser with search, filters (position, group, price, projection confidence) and
+  sorting by actual or projected points, value, start likelihood, price, ownership and team metrics.
+- Group standings (P, W, D, L, GF, GA, GD, Pts) computed from fixture results.
+- Squad builder enforcing the official rules, with captain/vice and budget validation.
+- Player detail sheet with projection basis and live tournament stats.
+
 ## Run / deploy
 It's a single self-contained `index.html` (React via CDN, no build step).
 - Open locally: just open the file in a browser.
@@ -21,6 +34,9 @@ It's a single self-contained `index.html` (React via CDN, no build step).
 ## AI Coach
 The public build ships with the coach disabled (shows a waitlist link).
 Set `WAITLIST_URL` near the top of the inline script to your own form.
+
+## Changelog
+Versioned in [CHANGELOG.md](CHANGELOG.md); the current version shows in the app header and footer.
 
 ## Disclaimer
 Not affiliated with, endorsed by, or connected to FIFA or the FIFA World Cup Fantasy game.
