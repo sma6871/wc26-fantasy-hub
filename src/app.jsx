@@ -856,6 +856,7 @@ const PLAYER_STATS_CACHE = {};   // { [playerId]: round[] }
 async function fetchPlayerStats(id){
   if(PLAYER_STATS_CACHE[id]) return PLAYER_STATS_CACHE[id];
   const res = await fetch(`https://play.fifa.com/json/fantasy/player_stats/${id}.json`);
+  if(!res.ok) throw new Error(`player_stats ${id}: HTTP ${res.status}`);  // don't cache a failed fetch, so reopening retries
   const data = await res.json();
   PLAYER_STATS_CACHE[id] = Array.isArray(data) ? data : [];
   return PLAYER_STATS_CACHE[id];
