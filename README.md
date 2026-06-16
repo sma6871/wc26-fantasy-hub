@@ -23,7 +23,8 @@ Start probabilities auto-update from the official lineups.
   sorting by actual or projected points, value, start likelihood, price, ownership and team metrics.
 - Group standings (P, W, D, L, GF, GA, GD, Pts) computed from fixture results.
 - Squad builder enforcing the official rules, with captain/vice and budget validation.
-- Player detail sheet with projection basis and live tournament stats.
+- Player detail sheet with projection basis, live tournament stats, and a match-by-match points
+  breakdown (loaded on demand when the sheet opens).
 
 ## Run / deploy
 It's a single self-contained `index.html` (React via CDN, no build step).
