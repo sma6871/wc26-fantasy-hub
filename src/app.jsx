@@ -9,8 +9,8 @@ const INTEL = {"1099":{"st":0.93,"rw":16.54},"1085":{"st":0.78,"sp":"C","rw":16.
 const TEAM_META = {"1":{"elo":1760,"prog":"R16"},"2":{"elo":2114,"prog":"TITLE"},"3":{"elo":1777,"prog":"R32"},"4":{"elo":1830,"prog":"R16"},"5":{"elo":1894,"prog":"QF"},"6":{"elo":1595,"prog":"R32"},"7":{"elo":1991,"prog":"SF"},"8":{"elo":1578,"prog":"R32"},"9":{"elo":1788,"prog":"R32"},"10":{"elo":1982,"prog":"QF"},"11":{"elo":1652,"prog":"R32"},"12":{"elo":1695,"prog":"R16"},"13":{"elo":1912,"prog":"QF"},"14":{"elo":1434,"prog":"R32"},"15":{"elo":1740,"prog":"R16"},"16":{"elo":1938,"prog":"R16"},"17":{"elo":1696,"prog":"R16"},"18":{"elo":2021,"prog":"TITLE"},"19":{"elo":2063,"prog":"TITLE"},"20":{"elo":1932,"prog":"SF"},"21":{"elo":1510,"prog":"R32"},"22":{"elo":1548,"prog":"R32"},"23":{"elo":1772,"prog":"R32"},"24":{"elo":1618,"prog":"R32"},"25":{"elo":1906,"prog":"R16"},"26":{"elo":1680,"prog":"R32"},"27":{"elo":1758,"prog":"R16"},"28":{"elo":1875,"prog":"R16"},"29":{"elo":1827,"prog":"QF"},"30":{"elo":1948,"prog":"QF"},"31":{"elo":1562,"prog":"R32"},"32":{"elo":1914,"prog":"QF"},"33":{"elo":1730,"prog":"R32"},"34":{"elo":1834,"prog":"R32"},"35":{"elo":1986,"prog":"SF"},"36":{"elo":1421,"prog":"R32"},"37":{"elo":1576,"prog":"R32"},"38":{"elo":853,"prog":"R16"},"39":{"elo":1860,"prog":"R16"},"40":{"elo":1517,"prog":"R32"},"41":{"elo":2157,"prog":"TITLE"},"42":{"elo":1712,"prog":"R16"},"43":{"elo":1891,"prog":"R16"},"44":{"elo":1628,"prog":"R32"},"45":{"elo":1911,"prog":"R16"},"46":{"elo":1892,"prog":"QF"},"47":{"elo":1726,"prog":"R16"},"48":{"elo":1714,"prog":"R32"}};
 const COACH_MODE = "off";
 const WAITLIST_URL = "https://tally.so/r/b5zb67";
-const APP_VERSION = "1.1.2";       // bump on every change; surfaced in the header + footer so changes are trackable
-const APP_UPDATED = "2026-06-12";  // last feature/content update (YYYY-MM-DD)
+const APP_VERSION = "1.2.0";       // bump on every change; surfaced in the header + footer so changes are trackable
+const APP_UPDATED = "2026-06-16";  // last feature/content update (YYYY-MM-DD)
 const store = {
   async get(k){ try{ const v=localStorage.getItem(k); return v!=null?{value:v}:null; }catch(e){ return null; } },
   async set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
@@ -373,6 +373,16 @@ table.sc .tn{display:inline-flex;align-items:center;gap:6px;font-weight:700;colo
 .stgrid .cell .v{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
 .stgrid .cell .l{font-size:9.5px;color:var(--dim);margin-top:3px}
 .verline{flex-basis:100%;text-align:center;font-size:11px;color:var(--dim);font-weight:600;font-variant-numeric:tabular-nums}
+.sbreak{margin-top:4px}
+.sbround{margin-top:10px;border-radius:12px;overflow:hidden;border:1px solid #23252b}
+.sbround .hd{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#101113;color:#fff;font-size:12px;font-weight:800;letter-spacing:.02em}
+.sbtbl{width:100%;border-collapse:collapse;font-size:13px}
+.sbtbl tr{background:#1b1d22;color:#e9eaee}
+.sbtbl td{padding:7px 12px;border-top:1px solid #2a2d34}
+.sbtbl td.val{text-align:center;color:#aeb2bc;width:70px}
+.sbtbl td.pts{text-align:right;font-weight:800;width:52px}
+.sbtbl tr.tot{background:#f6c945;color:#161616}
+.sbtbl tr.tot td{border-top:none;font-weight:800}
 `;
 
 function SpBadges({sp}) {
@@ -839,8 +849,98 @@ function PlayersView({players, sq, toggle, myIds, openP, fixtures}) {
 }
 
 /* ---------------- player detail ---------------- */
+/* ----- per-player match stats: lazy-loaded in the detail sheet only, never in bulk ----- */
+// FIFA exposes a per-player per-round stats endpoint. It is fetched ONLY when a detail sheet opens
+// (never on list render) and cached for the session, so re-opening a player costs zero extra calls.
+const PLAYER_STATS_CACHE = {};   // { [playerId]: round[] }
+async function fetchPlayerStats(id){
+  if(PLAYER_STATS_CACHE[id]) return PLAYER_STATS_CACHE[id];
+  const res = await fetch(`https://play.fifa.com/json/fantasy/player_stats/${id}.json`);
+  if(!res.ok) throw new Error(`player_stats ${id}: HTTP ${res.status}`);  // don't cache a failed fetch, so reopening retries
+  const data = await res.json();
+  PLAYER_STATS_CACHE[id] = Array.isArray(data) ? data : [];
+  return PLAYER_STATS_CACHE[id];
+}
+// points one stat contributes, by position - mirrors the official scoring (reconciled to the feed)
+const STAT_GOAL = {GK:9,DEF:7,MID:6,FWD:5};
+const STAT_CS   = {GK:5,DEF:5,MID:1,FWD:0};
+function statPoints(k, v, pos){
+  switch(k){
+    case "MP": return v>=60?2:v>=1?1:0;
+    case "GS": return v*STAT_GOAL[pos];
+    case "FK": return v*1;                            // direct free-kick goal bonus, on top of the goal
+    case "AS": return v*3;
+    case "CS": return v*STAT_CS[pos];
+    case "ST": return pos==="FWD"? Math.floor(v/2):0;
+    case "T":  return pos==="MID"? Math.floor(v/3):0;
+    case "CC": return pos==="MID"? Math.floor(v/2):0;
+    case "S":  return pos==="GK"?  Math.floor(v/3):0;
+    case "SB": return v*2;
+    case "PW": return v*2;
+    case "PS": return v*3;
+    case "PC": return -v;
+    case "YC": return -v;
+    case "RC": return -2*v;
+    case "OG": return -2*v;
+    case "GC": return (pos==="GK"||pos==="DEF")? -Math.max(0,v-1):0;  // first conceded is free
+    default:   return 0;                              // SXI etc: no direct points
+  }
+}
+// breakdown rows in display order. Core stats show whenever value>0 (even at 0 pts); the rest only
+// when they moved the score, so the visible Pts column always sums to the round total.
+const STAT_ROWS = [
+  {k:"MP", label:"Minutes played", fmt:v=>v+"'", core:true},
+  {k:"GS", label:"Goals", core:true},
+  {k:"FK", label:"Free-kick goals"},
+  {k:"AS", label:"Assists", core:true},
+  {k:"CS", label:"Clean sheet", fmt:()=>"Yes", core:true},
+  {k:"ST", label:"Shots on target", core:true},
+  {k:"T",  label:"Tackles", core:true},
+  {k:"CC", label:"Chances created", core:true},
+  {k:"S",  label:"Saves", core:true},
+  {k:"PW", label:"Penalty won"},
+  {k:"PS", label:"Penalty save"},
+  {k:"PC", label:"Penalty conceded"},
+  {k:"GC", label:"Goals conceded"},
+  {k:"OG", label:"Own goal"},
+  {k:"YC", label:"Yellow card", core:true},
+  {k:"RC", label:"Red card", core:true},
+  {k:"SB", label:"Scouting bonus", fmt:()=>"Yes", core:true},
+];
+function MatchBreakdown({rounds, pos}){
+  const list = (rounds||[]).filter(r=>r&&r.stats).slice().sort((a,b)=>(a.roundId||0)-(b.roundId||0));
+  if(!list.length) return <div className="pmeta" style={{marginTop:8}}>No match data yet.</div>;
+  return <div className="sbreak">
+    {list.map((r,ri)=>{
+      const st=r.stats;
+      const rows = STAT_ROWS.filter(d=>{ const v=st[d.k]||0; return v>0 && (d.core || statPoints(d.k,v,pos)!==0); });
+      return <div key={ri} className="sbround">
+        <div className="hd"><span>Matchday {r.roundId}</span><span className="num">{r.points} pts</span></div>
+        <table className="sbtbl"><tbody>
+          {rows.map(d=>{ const v=st[d.k]||0; const pts=statPoints(d.k,v,pos);
+            return <tr key={d.k}><td>{d.label}</td><td className="val num">{d.fmt?d.fmt(v):v}</td>
+              <td className="pts num" style={pts<0?{color:"#ff8a8a"}:null}>{pts>0?"+"+pts:pts}</td></tr>; })}
+          <tr className="tot"><td>Total</td><td className="val"></td><td className="pts num">{r.points}</td></tr>
+        </tbody></table>
+      </div>;
+    })}
+  </div>;
+}
+
 function Detail({p, sq, fixtures, close, toggle, inTeam}) {
   const t=sq[p.squadId]; const fx=fixtures[t.id]||[]; const nd=nextFixtureDate(p.squadId,fixtures);
+  // lazy per-player match stats: fetched only when this detail sheet opens, cached for the session
+  const [ps,setPs]=useState(()=> PLAYER_STATS_CACHE[p.id] || null);
+  const [psLoading,setPsLoading]=useState(false);
+  const [psErr,setPsErr]=useState(false);
+  useEffect(()=>{
+    if(PLAYER_STATS_CACHE[p.id]){ setPs(PLAYER_STATS_CACHE[p.id]); return; }
+    let alive=true; setPs(null); setPsErr(false); setPsLoading(true);
+    fetchPlayerStats(p.id)
+      .then(d=>{ if(alive){ setPs(d); setPsLoading(false); } })
+      .catch(()=>{ if(alive){ setPsErr(true); setPsLoading(false); } });
+    return ()=>{ alive=false; };
+  },[p.id]);
   return <div style={{position:"fixed",inset:0,zIndex:60,background:"rgba(5,8,12,.72)"}} onClick={close}>
     <div className="card" style={{position:"absolute",left:0,right:0,bottom:0,margin:0,borderRadius:"18px 18px 0 0",maxHeight:"82vh",overflow:"auto",padding:"16px"}} onClick={e=>e.stopPropagation()}>
       <div className="row">
@@ -882,7 +982,15 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
              : p.actTone==="down"? <><b style={{color:"#cf3a3f"}}>▼ Underperforming</b> vs projection</>
              : <>Tracking close to projection</>} — {p.act} actual vs {p.actExpected} projected over {p.matchesPlayed} {p.matchesPlayed===1?"match":"matches"}.
           </div>}
-          <div className="pmeta" style={{marginTop:6,opacity:.85,lineHeight:1.4}}>"Played" is the feed's lineup status (started / sub / did not play); exact minutes and per-player clean sheets aren't published, so clean sheets shown are the team's. Start tier auto-updates from lineup status.</div>
+          <div className="pmeta" style={{marginTop:6,opacity:.85,lineHeight:1.4}}>Aggregate totals from the live feed; "Played" is lineup status and clean sheets shown are the team's. Per-match minutes and the full points breakdown are below. Start tier auto-updates from lineup status.</div>
+        </div>
+      )}
+      {(psLoading || psErr || (ps && ps.length>0)) && (
+        <div className="stbox">
+          <div className="gl" style={{marginBottom:2}}>MATCH-BY-MATCH</div>
+          {psLoading && <div className="row" style={{gap:8,padding:"10px 0"}}><span className="spin"/><span className="pmeta">Loading match stats…</span></div>}
+          {psErr && <div className="pmeta" style={{marginTop:6}}>Couldn't load match stats. Reopen to retry.</div>}
+          {!psLoading && !psErr && ps && ps.length>0 && <MatchBreakdown rounds={ps} pos={p.position}/>}
         </div>
       )}
       <div style={{marginTop:12,background:"var(--panel2)",borderRadius:12,padding:"10px 12px"}}>

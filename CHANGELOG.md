@@ -3,6 +3,19 @@
 Versioning so changes are trackable. The current version shows in the app header and footer
 (`APP_VERSION` / `APP_UPDATED` in `src/app.jsx`). Bump both on every change.
 
+## 1.2.0 - 2026-06-16
+
+Match-by-match points breakdown in the player detail sheet.
+
+- Opening a player's detail sheet now lazy-loads that player's per-round stats from the public
+  FIFA per-player feed (player_stats), showing a small spinner while it loads. Results are cached
+  per session, so re-opening the same player costs no extra request.
+- Each matchday renders a Statistics / Value / Pts table: minutes played, goals, assists, clean
+  sheet, shots on target, tackles, chances created, saves (GK), cards and scouting bonus, with the
+  points each line scored and a yellow round total. Only lines that actually moved the score show.
+- Stats are fetched only when a detail sheet opens, never in bulk or on list render. The
+  STARTED / SUB / BENCH matchday badges on player rows are unchanged.
+
 ## 1.1.2 - 2026-06-12
 
 Matchday lineup status from the feed's matchStatus field.
