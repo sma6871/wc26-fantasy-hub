@@ -34,6 +34,8 @@ with the global identity.
 .
 ├── index.html              # DEPLOYED artifact: compiled, self-contained, served by Vercel
 ├── src/app.jsx             # EDITABLE source. Edit here, then run ./build.sh
+├── api/coach.js            # Vercel serverless function: AI coach proxy to Gemini Flash
+├── vercel.json             # Vercel config (api/coach.js maxDuration)
 ├── build.sh                # Compiles src/app.jsx -> index.html (esbuild + HTML template)
 ├── scripts/refresh-data.mjs# Refreshes the embedded player snapshot from FIFA feeds
 ├── scripts/update-form.mjs # Bakes results-based start tiers into INTEL (run each matchday)
@@ -58,7 +60,8 @@ build config. The source of truth is `src/app.jsx`. After editing the source, al
 
 Deployment is automatic: push to the default branch and Vercel redeploys the static
 `index.html`, served in production at https://fantasy26.help (custom domain on Vercel).
-There is no server, no bundler step on Vercel, no environment variables.
+There is no bundler step on Vercel. The only server-side piece is the `api/coach.js` Vercel
+function (AI coach proxy); it needs the `GEMINI_API_KEY` env var set in the Vercel dashboard.
 
 To preview locally, open `index.html` in a browser, or serve the folder
 (`npx serve .`). The app fetches live data from FIFA, so it needs network access.
@@ -163,21 +166,32 @@ Two bonus rules that affect value:
 
 There is no Player-of-the-Match bonus in this game.
 
-## AI coach
+## AI Coach (production)
 
-The public build ships with `COACH_MODE = "off"`, which renders `CoachWaitlist` (a link to
-`WAITLIST_URL`). Set `WAITLIST_URL` to a real form link (Tally or Google Forms).
+- Vercel function: `api/coach.js`
+- Uses Gemini 2.5 Flash via the `GEMINI_API_KEY` env var
+- Rate limit: 5 messages/user/day (client-side, `localStorage` key `wc26-coach-usage`)
+- `COACH_MODE = "gemini"` in `src/app.jsx`
+- To add `GEMINI_API_KEY`: Vercel dashboard -> Project -> Settings -> Environment Variables
+
+`COACH_MODE` switches the coach: `"off"` (waitlist), `"gemini"` (calls `/api/coach`, the
+production default), or `"claude"` (direct Anthropic call, personal artifact build only). The
+key never lives in client code; the Vercel function holds it. `vercel.json` sets the function
+`maxDuration` to 30s.
+
+## AI coach (background)
+
+`COACH_MODE = "off"` renders `CoachWaitlist` (a link to `WAITLIST_URL`); set `WAITLIST_URL`
+to a real form link (Tally or Google Forms).
 
 The coach code (`Coach`) is fully implemented. It builds a system prompt from the whole
 dataset via `buildContext`, sends chat history, parses replies, and renders any ```draft
 fenced JSON block as a `DraftCard` the user can review and apply (the app never auto-saves a
 squad; the user always confirms). The draft JSON shape is `{"ids":[...15...],"cap":id,"vc":id}`.
 
-To enable the coach publicly, do NOT call a model API directly from the browser with a key in
-client code. Add a serverless function (Vercel function) that holds the key and proxies the
-request, with per-visitor rate limiting. A free option is Google Gemini Flash; swap the fetch
-in `Coach` to call your own function endpoint instead of the model API. Keep `COACH_MODE` as
-the switch: "off" (waitlist), or a new "proxy" mode that calls the function.
+Never call a model API directly from the browser with a key in client code. The public coach
+runs through the `api/coach.js` Vercel function (see "AI Coach (production)" above), which holds
+the `GEMINI_API_KEY` and proxies to Gemini Flash, with a client-side daily cap per visitor.
 
 Note: there is a separate personal build kept in the owner's Claude account (an artifact) that
 uses Claude directly for the coach. That version is for personal use only and is not part of
