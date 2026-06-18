@@ -33,8 +33,11 @@ It's a single self-contained `index.html` (React via CDN, no build step).
 - Production: served at [https://fantasy26.help](https://fantasy26.help).
 
 ## AI Coach
-The public build ships with the coach disabled (shows a waitlist link).
-Set `WAITLIST_URL` near the top of the inline script to your own form.
+A chat coach that reads every team's projections, starting-XI odds and set-piece takers, and
+can draft a full squad you approve. In production it runs through a Vercel serverless function
+(`api/coach.js`) backed by Google Gemini Flash, so no API key ever ships in the browser, with a
+free daily limit of 5 questions per visitor. Set `COACH_MODE` to `"off"` near the top of the
+script to fall back to the waitlist (`WAITLIST_URL`).
 
 ## Changelog
 Versioned in [CHANGELOG.md](CHANGELOG.md); the current version shows in the app header and footer.

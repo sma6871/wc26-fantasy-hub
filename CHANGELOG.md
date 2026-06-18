@@ -3,6 +3,19 @@
 Versioning so changes are trackable. The current version shows in the app header and footer
 (`APP_VERSION` / `APP_UPDATED` in `src/app.jsx`). Bump both on every change.
 
+## 1.3.0 - 2026-06-18
+
+AI coach live in production via a serverless proxy.
+
+- New Vercel function `api/coach.js` proxies the coach to Google Gemini 2.5 Flash, holding the
+  `GEMINI_API_KEY` server-side so no key ever ships in the browser. `vercel.json` sets its
+  `maxDuration` to 30s.
+- `COACH_MODE` now switches between "off" (waitlist), "gemini" (production, calls `/api/coach`)
+  and "claude" (direct Anthropic call, personal artifact build only). Public default is "gemini".
+- Client-side daily rate limit: 5 coach questions per visitor per day, tracked in `localStorage`
+  (`wc26-coach-usage`) and reset when the date changes. The coach shows "X/5 questions left
+  today" and a friendly message once the limit is reached.
+
 ## 1.2.0 - 2026-06-16
 
 Match-by-match points breakdown in the player detail sheet.
