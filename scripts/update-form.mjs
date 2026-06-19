@@ -6,14 +6,16 @@
 // Usage: node scripts/update-form.mjs
 //
 // How start tiers are inferred:
-//   The feed reports each player's lineup status directly via matchStatus, so once a player's
-//   team has played at least one game we trust it:
+//   The feed reports each player's lineup status directly via matchStatus, so when it carries a
+//   real value we trust it:
 //     matchStatus "start"  -> st 0.93
 //     matchStatus "sub"    -> st 0.55
-//     matchStatus null     -> st 0.35  (in the squad but did not feature)
-//   Players whose team has NOT played yet are left untouched, so the hand-curated edge for
-//   upcoming fixtures is preserved. This mirrors the override in buildModel exactly.
-//   New players with evidence but no existing INTEL entry are appended.
+//     matchStatus null     -> SKIP (leave the curated tier untouched)
+//   matchStatus resets to null between rounds, before the next XI is published. A null is NOT a
+//   benching, so we must not write 0.35 for it: doing that once a team has played MD1 but not MD2
+//   would wipe the hand-curated tier of every nailed starter. Players whose team has not played at
+//   all are also left untouched. This mirrors the override in buildModel exactly.
+//   New players with a real lineup status but no existing INTEL entry are appended.
 import { readFileSync, writeFileSync } from "node:fs";
 
 const BASE = "https://play.fifa.com/json/fantasy";
@@ -32,13 +34,15 @@ for (const r of rounds) {
   }
 }
 
-const startProbFromMatchStatus = (ms) => (ms === "start" ? 0.93 : ms === "sub" ? 0.55 : 0.35);
+const startProbFromMatchStatus = (ms) => (ms === "start" ? 0.93 : 0.55); // only called for start/sub
 
 const updates = new Map(); // id -> st
 for (const p of players) {
   if (p.status !== "playing") continue;
   if (!playedTeams.has(p.squadId)) continue; // don't touch teams that haven't played yet
-  updates.set(p.id, startProbFromMatchStatus(p.matchStatus || null));
+  const ms = p.matchStatus || null;
+  if (ms !== "start" && ms !== "sub") continue; // null between rounds is not a benching - skip it
+  updates.set(p.id, startProbFromMatchStatus(ms));
 }
 
 const path = new URL("../src/app.jsx", import.meta.url);
@@ -65,5 +69,5 @@ if (toAppend.length) {
 }
 
 writeFileSync(path, src);
-console.log(`update-form: ${updated} start tiers updated, ${toAppend.length} added (from ${updates.size} players on teams that have played).`);
+console.log(`update-form: ${updated} start tiers updated, ${toAppend.length} added (from ${updates.size} players with a published start/sub lineup status).`);
 console.log("Now run ./build.sh to regenerate index.html.");

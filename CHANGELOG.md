@@ -3,6 +3,31 @@
 Versioning so changes are trackable. The current version shows in the app header and footer
 (`APP_VERSION` / `APP_UPDATED` in `src/app.jsx`). Bump both on every change.
 
+## 1.4.0 - 2026-06-19
+
+Fix the false "BENCH" badges at MD2 and make projections respond to actual results.
+
+- Lineup badge fix: `matchStatus` from the feed resets to null between rounds (before the next XI
+  is published). The app was reading that null as a benching, so from Matchday 2 every nailed
+  starter whose next game had not kicked off showed a red BENCH badge and had their start
+  probability forced to 0.35. Null is now treated as "lineup not out yet": keep the curated tier,
+  show no badge. Only a real "start"/"sub" status badges or overrides the tier. The red BENCH
+  state is gone.
+- Same fix in `scripts/update-form.mjs`, which previously would have baked 0.35 into the curated
+  INTEL tiers for every starter between rounds. It now skips null and only writes start/sub.
+- Projections are now form-blended once a team has played. The pre-tournament per-game value acts
+  as a prior (worth ~1.5 games) and is shrunk toward the observed per-game rate as matches
+  accumulate, so a cold start drags a projection down and a hot start lifts it. `Proj (grp)` and
+  `Tournament` are now banked points plus the blended rate over the remaining games. Example:
+  a player on 3 points from 2 games no longer shows a 36-point group projection.
+- Tamed the model's biggest source of inflation: set-piece multipliers were stacking (a
+  pen+corner+FK taker got x1.67), and a single player could absorb an unrealistic share of a weak
+  team's attacking output. Multipliers reduced (x1.28 pens, x1.10 corners/FKs) and any one player
+  is now capped at 42% of team attacking output.
+- Clearer numbers in the player sheet: the projection tiles carry tooltips, a line shows the
+  current per-game rate, and the "Tournament so far" comparison cell is relabelled "Exp. by now"
+  (the frozen pre-tournament expectation) so it no longer reads as a second, conflicting projection.
+
 ## 1.3.0 - 2026-06-18
 
 AI coach live in production via a serverless proxy.
