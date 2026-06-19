@@ -94,10 +94,10 @@ if (emptySlot) { emptySlot.click(); await wait(80); }
 check("Empty slot opens ADD sheet, stays on pitch (no Players-tab jump)",
   /ADD /.test(root.textContent) && !!root.querySelector(".pitch"));
 
-// Rules tab: recalibration note.
+// Rules tab: projections explainer (form-blend note).
 await openTab(4);
-check("Rules tab has the recalibration note",
-  /ABOUT THE PROJECTIONS/.test(root.textContent) && /recalibrate after Matchday 1/.test(root.textContent));
+check("Rules tab has the projections explainer",
+  /ABOUT THE PROJECTIONS/.test(root.textContent) && /blends in actual results/.test(root.textContent));
 
 let pass = 0;
 for (const r of results) {

@@ -10,8 +10,8 @@ const TEAM_META = {"1":{"elo":1760,"prog":"R16"},"2":{"elo":2114,"prog":"TITLE"}
 const COACH_MODE = "gemini";       // "off" = waitlist, "gemini" = /api/coach proxy, "claude" = direct (personal artifact build only)
 const WAITLIST_URL = "https://tally.so/r/b5zb67";
 const COACH_DAILY_LIMIT = 5;       // max coach questions per visitor per day (client-side, localStorage)
-const APP_VERSION = "1.3.0";       // bump on every change; surfaced in the header + footer so changes are trackable
-const APP_UPDATED = "2026-06-18";  // last feature/content update (YYYY-MM-DD)
+const APP_VERSION = "1.4.0";       // bump on every change; surfaced in the header + footer so changes are trackable
+const APP_UPDATED = "2026-06-19";  // last feature/content update (YYYY-MM-DD)
 const store = {
   async get(k){ try{ const v=localStorage.getItem(k); return v!=null?{value:v}:null; }catch(e){ return null; } },
   async set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
@@ -164,28 +164,35 @@ function buildModel(players, squads, rounds) {
     // actual tournament data for this player (live feed only)
     p._actPts = p.stats && typeof p.stats.totalPoints==="number" ? p.stats.totalPoints : null;
     p._scoredOrAssisted = !!(goalMap[p.id] || assistMap[p.id]);
-    const teamPlayed = (teamMP[p.squadId]||0) > 0;
     const ms = p.matchStatus || null;   // "start" | "sub" | null, from the live feed
-    // matchday lineup badge + minutes/participation display, only once the team has played
-    p.matchBadge = teamPlayed
-      ? (ms==="start"? {label:"STARTED",color:"green"} : ms==="sub"? {label:"SUB",color:"amber"} : {label:"BENCH",color:"red"})
+    // matchStatus only carries a real value once the round's XI is published, and resets to null
+    // between rounds. So a null on a team that already played (e.g. MD1 done, MD2 not kicked off)
+    // means "next match lineup not out yet" - it is NOT a benching. Only badge / auto-adjust the
+    // start tier when an actual lineup status is present; otherwise fall back to the curated tier.
+    const hasLineup = ms==="start" || ms==="sub";
+    p.matchBadge = hasLineup
+      ? (ms==="start"? {label:"STARTED",color:"green"} : {label:"SUB",color:"amber"})
       : null;
-    p.minsDisplay = teamPlayed ? (ms==="start"? "Started" : ms==="sub"? "Sub" : "DNP") : "";
-    // (4) auto start probability from matchStatus, but only for players whose team has already played
-    p._startAuto = teamPlayed;
-    if(teamPlayed) st = startProbFromMatchStatus(ms);
+    p.minsDisplay = hasLineup ? (ms==="start"? "Started" : "Sub") : "";
+    // auto start probability from matchStatus, only when a lineup status is actually present
+    p._startAuto = hasLineup;
+    if(hasLineup) st = startProbFromMatchStatus(ms);
     p._st = st;
     const sp = intel.sp||"";
     const posF = {FWD:1.3,MID:1.0,DEF:0.32,GK:0}[p.position];
     let w = Math.pow(Math.max(0.1,p.price-3.3),1.7)*posF*st;
-    if(sp.includes("P")) w*=1.45;
-    if(sp.includes("C")||sp.includes("F")) w*=1.15;
+    // set-piece duty boosts attacking weight, but the multipliers were stacking too hard (a
+    // PEN+corner+FK "talisman" got x1.67), which inflated the lone focal point of a weak team.
+    if(sp.includes("P")) w*=1.28;
+    if(sp.includes("C")||sp.includes("F")) w*=1.10;
     p._w = w;
     teamW[p.squadId]=(teamW[p.squadId]||0)+w;
   });
   // raw model points (3 group games)
   players.forEach(p=>{
-    const tx = teamX[p.squadId]; const share = p._w/(teamW[p.squadId]||1);
+    // cap any one player at 42% of the team's attacking output: a single star can't realistically
+    // account for more than that, and the cap stops weak-team focal points from running away.
+    const tx = teamX[p.squadId]; const share = Math.min(p._w/(teamW[p.squadId]||1), 0.42);
     const gInv = tx.xgf*share;                       // expected goal involvements
     const gPts = {GK:9,DEF:7,MID:6,FWD:5}[p.position];
     const att = gInv*(0.6*gPts + 0.45*3) + (p.position==="FWD"? 0.35*gInv : 0);
@@ -208,20 +215,11 @@ function buildModel(players, squads, rounds) {
     // Official scouting bonus: +2 when a sub-5%-owned player scores >4 pts in a match
     p.scout = p.percentSelected < 5;
     if(p.scout){ const pg = proj/3; const prob = Math.max(0, Math.min(0.45, (pg-1.8)/5)); proj += 2*3*prob; }
-    p.proj = Math.round(proj*10)/10;
     p.expert = rw||null;
     p.confidence = rw!=null? "expert" : "model";   // expert-backed when a RotoWire value exists, else model-only
-    const prog = sq[p.squadId].prog;
-    p.tourn = Math.round((p.proj*PROG_MULT[prog]/PROG_MULT.R32)*10)/10;
-    p.value = Math.round(p.proj/p.price*100)/100;
     p.sp = INTEL[p.id]?.sp||"";
     p.note = INTEL[p.id]?.n||"";
     p.start = p._st;
-    // team-level projected goals carried onto every player (shared across the squad, not per-player)
-    const ptx = teamX[p.squadId];
-    p.txg = ptx.xgf/ptx.n;      // goals for, per group game
-    p.txgc = ptx.xga/ptx.n;     // goals conceded, per group game
-    p.tcs = ptx.cs/ptx.n;       // clean-sheet probability, per group game (0-1)
     // actual tournament stats surfaced in the UI (all null/0 when offline or before kickoff)
     p.act = p._actPts;                       // actual fantasy points scored so far (null if no feed data)
     p.goals = goalMap[p.id]||0;
@@ -229,11 +227,39 @@ function buildModel(players, squads, rounds) {
     p.teamCS = teamCS[p.squadId]||0;         // team clean sheets so far (per-player CS needs minutes the feed lacks)
     p.matchesPlayed = teamMP[p.squadId]||0;  // completed group matches for the player's team
     p.startAuto = p._startAuto;              // true when start tier was auto-derived from results
-    if(p.act!=null && p.matchesPlayed>0){
-      const expected = p.proj*p.matchesPlayed/3;   // pro-rated share of the 3-game group projection
+    // frozen pre-tournament 3-game projection: the baseline for the "beating expectations" story
+    p.projPre = Math.round(proj*10)/10;
+    // ---- form blend: anchor the live projection to actual results once the team has played ----
+    // Treat the pre-tournament per-game value as a prior worth PRIOR_GAMES games of evidence, then
+    // shrink it toward the observed per-game rate as real matches accumulate. This is what stops a
+    // player who has underdelivered (or overdelivered) from keeping a stale pre-tournament number.
+    // Pre-kickoff (matchesPlayed = 0) it is a no-op: p.proj == p.projPre.
+    const PRIOR_GAMES = 1.5;
+    const pgPrior = proj/3;
+    const hasForm = p.act!=null && p.matchesPlayed>0;
+    const pgNow = hasForm ? (pgPrior*PRIOR_GAMES + p.act)/(PRIOR_GAMES + p.matchesPlayed) : pgPrior;
+    const banked = hasForm ? p.act : 0;
+    p.pg = Math.round(pgNow*10)/10;          // current best per-game estimate
+    // group projection = points banked so far + blended rate over the remaining group games
+    p.proj = Math.round((banked + pgNow*Math.max(0, 3 - p.matchesPlayed))*10)/10;
+    p.value = Math.round(p.proj/p.price*100)/100;
+    // whole-tournament estimate: banked points + blended rate over the expected remaining games,
+    // where total expected games scale with how far the team is projected to advance.
+    const prog = sq[p.squadId].prog;
+    const games = 3*PROG_MULT[prog]/PROG_MULT.R32;
+    p.tourn = Math.round((banked + pgNow*Math.max(0, games - p.matchesPlayed))*10)/10;
+    // team-level projected goals carried onto every player (shared across the squad, not per-player)
+    const ptx = teamX[p.squadId];
+    p.txg = ptx.xgf/ptx.n;      // goals for, per group game
+    p.txgc = ptx.xga/ptx.n;     // goals conceded, per group game
+    p.tcs = ptx.cs/ptx.n;       // clean-sheet probability, per group game (0-1)
+    // over/under is measured against the FROZEN pre-tournament expectation to date, not the
+    // form-adjusted number (otherwise the projection chases results and nobody ever "misses").
+    if(hasForm){
+      const expected = p.projPre*p.matchesPlayed/3;   // pre-tournament points expected by now
       p.actExpected = Math.round(expected*10)/10;
       const d = p.act-expected;
-      p.actTone = d>=0.75? "up" : d<=-0.75? "down" : "flat";   // over/under vs pre-tournament projection
+      p.actTone = d>=0.75? "up" : d<=-0.75? "down" : "flat";
     } else { p.actExpected=null; p.actTone=null; }
   });
   // group standings: group letter -> rows sorted by pts, GD, GF, then Elo as the pre-tournament tiebreak
@@ -788,8 +814,8 @@ function TeamPage({t, back, players, sq, fixtures, teamX, standings, setTeam, to
 // [key, label, tooltip] — tooltip explains each sort so the labels are self-documenting
 const SORT_OPTS=[
   ["act","Actual pts","Actual fantasy points scored so far this tournament"],
-  ["proj","Proj pts","Projected points across the 3 group games"],
-  ["deep","Tournament pts","Projected points across the whole tournament: the group projection scaled by how far the team is expected to advance (deep-run value)"],
+  ["proj","Proj pts","Projected points across the 3 group games. Once matches are played this blends the pre-tournament estimate with actual results."],
+  ["deep","Tournament pts","Projected points across the whole tournament: the per-game rate over the expected number of games, scaled by how far the team is tipped to advance (deep-run value)"],
   ["value","Value /$","Projected points per $1m of price"],
   ["start","Nailed","Likelihood of starting — higher is more nailed-on"],
   ["price","Price","Player price"],
@@ -968,10 +994,18 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
         <button className="btn ghost" onClick={close}>✕</button>
       </div>
       <div className="row" style={{marginTop:14,gap:8}}>
-        {[["$"+p.price+"m","Price"],[p.proj,"Proj (3 GMs)"],[p.tourn,"Tournament"],[startTier(p.start).label,"Start XI"],[p.percentSelected+"%","Owned"]].map(([v,l])=>
-          <div key={l} style={{flex:1,background:"var(--panel2)",borderRadius:10,padding:"9px 4px",textAlign:"center"}}>
+        {[["$"+p.price+"m","Price",""],
+          [p.proj,"Proj (grp)", p.matchesPlayed>0
+            ? `Group-stage points: ${p.act} banked + ~${p.pg}/game projected for the rest. Blends the pre-tournament estimate with results once games are played.`
+            : "Projected points across the 3 group games"],
+          [p.tourn,"Tournament","Projected points across the whole tournament, including expected knockout games (scaled by how far the team is tipped to advance)"],
+          [startTier(p.start).label,"Start XI",""],
+          [p.percentSelected+"%","Owned",""]].map(([v,l,ti])=>
+          <div key={l} title={ti||undefined} style={{flex:1,background:"var(--panel2)",borderRadius:10,padding:"9px 4px",textAlign:"center"}}>
             <div className="bigpt num" style={{fontSize:17}}>{v}</div><div style={{fontSize:9.5,color:"var(--dim)"}}>{l}</div></div>)}
       </div>
+      {p.matchesPlayed>0 && <div className="pmeta" style={{margin:"6px 12px 0",textAlign:"center",lineHeight:1.4}}>
+        Proj now blends the pre-tournament estimate with actual results — running at <b className="num">~{p.pg}</b> pts/game.</div>}
       <div className="row" style={{marginTop:10,gap:8,alignItems:"center"}}>
         <span className="gl">NEXT</span>
         {nd && <b className="num" style={{color:"var(--pitch)"}}>{nd}</b>}
@@ -991,12 +1025,12 @@ function Detail({p, sq, fixtures, close, toggle, inTeam}) {
             <div className="cell"><div className="v">{p.assists}</div><div className="l">Assists</div></div>
             <div className="cell"><div className="v" style={{fontSize:p.minsDisplay?14:17}}>{p.minsDisplay||"—"}</div><div className="l">Played</div></div>
             <div className="cell"><div className="v">{(p.position==="GK"||p.position==="DEF")?p.teamCS:"—"}</div><div className="l">Clean sheets</div></div>
-            <div className="cell"><div className="v">{p.actExpected!=null?p.actExpected:"—"}</div><div className="l">Projected</div></div>
+            <div className="cell"><div className="v">{p.actExpected!=null?p.actExpected:"—"}</div><div className="l" title="Points the pre-tournament projection expected by now (frozen baseline)">Exp. by now</div></div>
           </div>
           {p.actExpected!=null && <div className="pmeta" style={{marginTop:8,lineHeight:1.4}}>
             {p.actTone==="up"? <><b style={{color:"#15803d"}}>▲ Outperforming</b> its projection</>
              : p.actTone==="down"? <><b style={{color:"#cf3a3f"}}>▼ Underperforming</b> vs projection</>
-             : <>Tracking close to projection</>} — {p.act} actual vs {p.actExpected} projected over {p.matchesPlayed} {p.matchesPlayed===1?"match":"matches"}.
+             : <>Tracking close to projection</>} — {p.act} actual vs {p.actExpected} expected (pre-tournament pace) over {p.matchesPlayed} {p.matchesPlayed===1?"match":"matches"}.
           </div>}
           <div className="pmeta" style={{marginTop:6,opacity:.85,lineHeight:1.4}}>Aggregate totals from the live feed; "Played" is lineup status and clean sheets shown are the team's. Per-match minutes and the full points breakdown are below. Start tier auto-updates from lineup status.</div>
         </div>
@@ -1332,7 +1366,7 @@ function Rules() {
     <div className="card">
       <div className="gl" style={{marginBottom:5}}>ABOUT THE PROJECTIONS</div>
       <div style={{fontSize:13.5,lineHeight:1.5,color:"var(--ink)",opacity:.85}}>
-        Projected points are <b>pre-tournament estimates</b> from team Elo, starting-XI probability, set-piece duty and expert group-stage values — not official numbers. Expect them to <b>recalibrate after Matchday 1</b>, once real lineups and results land. Players marked <span className="conf exp">expert-backed</span> blend an expert (RotoWire) projection; <span className="conf mod">model estimate</span> players are model-only.
+        Projected points start as <b>pre-tournament estimates</b> from team Elo, starting-XI probability, set-piece duty and expert group-stage values, not official numbers. Once a team has played, the projection <b>blends in actual results</b>, shifting toward each player's real per-game scoring as matches accumulate, so a hot or cold start moves the number. Players marked <span className="conf exp">expert-backed</span> blend an expert (RotoWire) projection; <span className="conf mod">model estimate</span> players are model-only.
       </div>
     </div>
     {RULES_TEXT.map(([t,b],i)=><div key={i} className="card"><div className="gl" style={{marginBottom:5}}>{t.toUpperCase()}</div>

@@ -113,11 +113,19 @@ Keys: `wc26-team` (squad: `{ids, cap, vc}`) and `wc26-chat` (last 40 coach messa
 ## The projection model (buildModel)
 
 Per team, an Elo-based win/CS estimate feeds per-player projected points. A player's
-attacking share scales with price, position, start probability and set-piece duties, then is
-blended with expert group-stage values where available. Knockout "deep-run" value uses
-`PROG_MULT` (how far the team is expected to advance). The official scouting bonus is priced
+attacking share scales with price, position, start probability and set-piece duties (the
+set-piece multipliers are deliberately modest, x1.28 for pens and x1.10 for corners/FKs, and a
+single player is capped at 42% of the team's attacking output so a weak-team talisman can't run
+away), then is blended with expert group-stage values where available. Knockout "deep-run" value
+uses `PROG_MULT` (how far the team is expected to advance). The official scouting bonus is priced
 into sub-5%-owned players. Start probabilities come from curated tiers; set pieces are flagged
 P (penalties), C (corners), F (free kicks).
+
+Once matches are played the pre-tournament number is form-blended toward observed per-game
+scoring (see "Refreshing data" below), so projections stop being purely pre-tournament estimates.
+Expert-backed projections (a RotoWire `rw` value exists) are anchored 75/25 to the expert number;
+model-only players have no such anchor, so an inflated model value shows in full until results
+pull it back. That asymmetry is the main remaining source of model-only outliers.
 
 The curated intel (start tiers, set-piece flags, fitness notes) is the main source of edge and
 the thing most worth correcting. It currently lives inline in the model. When confirmed
@@ -138,10 +146,18 @@ The public feed exposes per-player POINTS (`stats.totalPoints`), lineup status (
 "start", "sub", or null), and per-match scores plus goal/assist scorer lists (in `rounds.json`),
 but NOT per-player minutes or clean sheets. The app derives actual points, goals, assists,
 standings, match results, and a matchday badge from these. Start probability auto-updates from
-`matchStatus` once a team has played: start => 0.93, sub => 0.55, else 0.35; teams that have not
-played keep their curated tier. `update-form.mjs` uses the identical logic so the matchday script
-matches `buildModel`. Note: the feed tags every non-starting squad member as "sub" (a named
-substitute), so the null-on-a-played-team case (red BENCH badge) does not occur in practice.
+`matchStatus`: start => 0.93, sub => 0.55. Crucially, `matchStatus` only carries a real value
+while a round's XI is published and resets to null between rounds, so a null is treated as "lineup
+not out yet" (keep the curated tier, no badge), NOT as a benching. Only a "start"/"sub" status
+overrides the curated tier or shows a STARTED/SUB badge; there is no red BENCH state.
+`update-form.mjs` uses the identical rule and skips null so it never wipes a curated tier between
+rounds.
+
+Projections are form-blended once a team has played (`buildModel`): the pre-tournament per-game
+value is a prior worth `PRIOR_GAMES` (=1.5) games, shrunk toward the observed per-game rate as
+matches accumulate. `p.proj` (group) and `p.tourn` (whole tournament) become banked points plus
+the blended rate over the remaining games. `p.projPre` keeps the frozen pre-tournament baseline,
+used only for the over/under-vs-expectation story in the detail sheet.
 
 ## Official rules reference (keep accurate)
 
